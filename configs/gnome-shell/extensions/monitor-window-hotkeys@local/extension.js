@@ -2,6 +2,7 @@ import Shell from 'gi://Shell';
 import Meta from 'gi://Meta';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -32,6 +33,26 @@ const RESIZE_KEYBINDINGS = [
 ];
 
 const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
+
+// D-Bus XML interface definition for programmatic window tiling.
+const DBUS_INTERFACE_XML = `
+<node name="/org/gnome/shell/extensions/monitor-window-hotkeys">
+  <interface name="org.gnome.shell.extensions.MonitorWindowHotkeys">
+    <method name="TileRightHalf"/>
+    <method name="TileLeftHalf"/>
+    <method name="TileTopHalf"/>
+    <method name="TileBottomHalf"/>
+    <method name="MoveToMonitor1"/>
+    <method name="MoveToMonitor2"/>
+    <method name="MoveToMonitor3"/>
+    <method name="MoveToMonitor4"/>
+    <method name="MoveToMonitor5"/>
+    <method name="MoveToMonitor6"/>
+  </interface>
+</node>`;
+
+// Pre-parse the D-Bus XML into a node info structure.
+const _dbusNodeInfo = Gio.DBusNodeInfo.new_for_xml(DBUS_INTERFACE_XML);
 
 function getFocusWindow() {
   const win = global.display.focus_window;
@@ -86,10 +107,11 @@ function canMoveResizeWindow(win) {
     return false;
   }
 
-  if (
-    (typeof win.allows_resize === 'function' && !win.allows_resize()) ||
-    (typeof win.allows_move === 'function' && !win.allows_move())
-  ) {
+  // Check allows_resize/allows_move only when those methods exist.
+  if (typeof win.allows_resize === 'function' && !win.allows_resize()) {
+    return false;
+  }
+  if (typeof win.allows_move === 'function' && !win.allows_move()) {
     return false;
   }
 
@@ -192,78 +214,90 @@ function resizeFocusedWindow(edge, direction) {
   }
 }
 
-function pointerDragModifiersHeld() {
-  const [, , modifiers] = global.get_pointer();
-  return (modifiers & POINTER_DRAG_MODIFIERS) === POINTER_DRAG_MODIFIERS;
-}
-
-function startPointerDrag(state) {
-  if (state.timeoutId) {
-    return true;
+function pointerDragReleaseEvent(event) {
+  if (event.type !== Clutter.EventType.BUTTON_RELEASE) {
+    return false;
   }
 
-  const win = getFocusWindow();
-  if (!canMoveWindow(win)) {
-    return false;
+  const button = event.get_button();
+  return button === 1;
+}
+
+function stopPointerDrag(state) {
+  if (!state) {
+    return;
+  }
+
+  if (state.timeoutId) {
+    GLib.source_remove(state.timeoutId);
+    state.timeoutId = null;
+  }
+
+  const win = state.window;
+  if (!win) {
+    return;
   }
 
   try {
     prepareWindowForMoveResize(win);
-
-    const [pointerX, pointerY] = global.get_pointer();
+    const workArea = getWindowWorkArea(win);
     const frame = win.get_frame_rect();
 
+    // Clamp to work area.
+    let x = Math.max(workArea.x, Math.min(frame.x, workArea.x + workArea.width - frame.width));
+    let y = Math.max(workArea.y, Math.min(frame.y, workArea.y + workArea.height - frame.height));
+
+    win.move_frame(true, x, y);
+    raiseWindow(win);
+  } catch (error) {
+    console.error(`monitor-window-hotkeys: failed to stop pointer drag: ${error}`);
+  }
+
+  state.window = null;
+}
+
+function startPointerDrag(state) {
+  if (!state) {
+    return;
+  }
+
+  const win = getFocusWindow();
+  if (!canMoveWindow(win)) {
+    return;
+  }
+
+  try {
+    prepareWindowForMoveResize(win);
     state.window = win;
-    state.pointerX = pointerX;
-    state.pointerY = pointerY;
-    state.windowX = frame.x;
-    state.windowY = frame.y;
+    const [, pointerX, pointerY] = global.get_pointer();
+    const frame = win.get_frame_rect();
+    state.pointerX = pointerX - frame.x;
+    state.pointerY = pointerY - frame.y;
+
+    // Start a timeout to handle the drag.
     state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_DRAG_INTERVAL_MS, () => {
-      const activeWindow = state.window;
-      if (!activeWindow || !canMoveWindow(activeWindow) || !pointerDragModifiersHeld()) {
-        state.timeoutId = null;
-        state.window = null;
+      if (!state || !state.window) {
         return GLib.SOURCE_REMOVE;
       }
 
-      const [currentX, currentY] = global.get_pointer();
-      activeWindow.move_frame(
-        true,
-        state.windowX + currentX - state.pointerX,
-        state.windowY + currentY - state.pointerY,
-      );
-      raiseWindow(activeWindow);
+      const win = state.window;
+      const [, pointerX, pointerY] = global.get_pointer();
+      let newX = pointerX - state.pointerX;
+      let newY = pointerY - state.pointerY;
+
+      // Clamp to work area.
+      const workArea = getWindowWorkArea(win);
+      newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - win.get_frame_rect().width));
+      newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - win.get_frame_rect().height));
+
+      win.move_frame(true, newX, newY);
+      raiseWindow(win);
 
       return GLib.SOURCE_CONTINUE;
     });
-
-    return true;
   } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to start pointer window drag: ${error}`);
-    return false;
+    console.error(`monitor-window-hotkeys: failed to start pointer drag: ${error}`);
   }
-}
-
-function stopPointerDrag(state) {
-  if (state.timeoutId) {
-    GLib.Source.remove(state.timeoutId);
-  }
-
-  state.timeoutId = null;
-  state.window = null;
-  state.pointerX = 0;
-  state.pointerY = 0;
-  state.windowX = 0;
-  state.windowY = 0;
-}
-
-function pointerDragReleaseEvent(event) {
-  if (event.type() !== Clutter.EventType.KEY_RELEASE) {
-    return false;
-  }
-
-  const keySymbol = event.get_key_symbol();
-  return keySymbol === Clutter.KEY_w || keySymbol === Clutter.KEY_W;
 }
 
 function tileFocusedWindowTopHalf() {
@@ -280,12 +314,8 @@ function tileFocusedWindowTopHalf() {
       : global.display.get_current_monitor();
     const workArea = win.get_work_area_for_monitor(monitorIndex);
     const topHeight = Math.floor(workArea.height / 2);
-    const x = workArea.x;
-    const y = workArea.y;
-    const width = workArea.width;
-    const height = topHeight;
 
-    if (width <= 0 || height <= 0) {
+    if (topHeight <= 0 || workArea.height <= 0) {
       return;
     }
 
@@ -293,9 +323,9 @@ function tileFocusedWindowTopHalf() {
       win.move_to_monitor(monitorIndex);
     }
     if (typeof win.move_frame === 'function') {
-      win.move_frame(true, x, y);
+      win.move_frame(true, workArea.x, workArea.y);
     }
-    win.move_resize_frame(true, x, y, width, height);
+    win.move_resize_frame(true, workArea.x, workArea.y, workArea.width, topHeight);
     raiseWindow(win);
   } catch (error) {
     console.error(`monitor-window-hotkeys: failed to tile focused window top: ${error}`);
@@ -315,13 +345,10 @@ function tileFocusedWindowBottomHalf() {
       ? win.get_monitor()
       : global.display.get_current_monitor();
     const workArea = win.get_work_area_for_monitor(monitorIndex);
-    const bottomY = workArea.y + Math.floor(workArea.height / 2);
-    const x = workArea.x;
-    const y = bottomY;
-    const width = workArea.width;
-    const height = workArea.height - Math.floor(workArea.height / 2);
+    const bottomHeight = Math.floor(workArea.height / 2);
+    const y = workArea.y + Math.floor(workArea.height / 2);
 
-    if (width <= 0 || height <= 0) {
+    if (bottomHeight <= 0 || workArea.height <= 0) {
       return;
     }
 
@@ -329,9 +356,9 @@ function tileFocusedWindowBottomHalf() {
       win.move_to_monitor(monitorIndex);
     }
     if (typeof win.move_frame === 'function') {
-      win.move_frame(true, x, y);
+      win.move_frame(true, workArea.x, y);
     }
-    win.move_resize_frame(true, x, y, width, height);
+    win.move_resize_frame(true, workArea.x, y, workArea.width, bottomHeight);
     raiseWindow(win);
   } catch (error) {
     console.error(`monitor-window-hotkeys: failed to tile focused window bottom: ${error}`);
@@ -352,9 +379,8 @@ function tileFocusedWindowLeftHalf() {
       : global.display.get_current_monitor();
     const workArea = win.get_work_area_for_monitor(monitorIndex);
     const leftWidth = Math.floor(workArea.width / 2);
-    const x = workArea.x;
     const y = workArea.y;
-    const width = leftWidth;
+    const width = workArea.width - leftWidth;
     const height = workArea.height;
 
     if (width <= 0 || height <= 0) {
@@ -365,9 +391,9 @@ function tileFocusedWindowLeftHalf() {
       win.move_to_monitor(monitorIndex);
     }
     if (typeof win.move_frame === 'function') {
-      win.move_frame(true, x, y);
+      win.move_frame(true, workArea.x, y);
     }
-    win.move_resize_frame(true, x, y, width, height);
+    win.move_resize_frame(true, workArea.x, y, width, height);
     raiseWindow(win);
   } catch (error) {
     console.error(`monitor-window-hotkeys: failed to tile focused window left: ${error}`);
@@ -422,13 +448,66 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       windowX: 0,
       windowY: 0,
     };
-    this._capturedEventId = global.stage.connect('captured-event', (actor, event) => {
+
+    // Expose D-Bus methods for programmatic window tiling.
+    this._dbusConnection = new Gio.DBusSessionService({
+      bus_name: 'org.gnome.shell.extensions.MonitorWindowHotkeys',
+      introspection_data: _dbusNodeInfo,
+    });
+
+    // Handle D-Bus method calls by dispatching to the appropriate tile function.
+    const handler = (connection, sender, object_path, interface_name, method_name, params, invocation) => {
+      switch (method_name) {
+        case 'TileRightHalf':
+          tileFocusedWindowRightHalf();
+          break;
+        case 'TileLeftHalf':
+          tileFocusedWindowLeftHalf();
+          break;
+        case 'TileTopHalf':
+          tileFocusedWindowTopHalf();
+          break;
+        case 'TileBottomHalf':
+          tileFocusedWindowBottomHalf();
+          break;
+        case 'MoveToMonitor1':
+          moveFocusedWindowToMonitor(0);
+          break;
+        case 'MoveToMonitor2':
+          moveFocusedWindowToMonitor(1);
+          break;
+        case 'MoveToMonitor3':
+          moveFocusedWindowToMonitor(2);
+          break;
+        case 'MoveToMonitor4':
+          moveFocusedWindowToMonitor(3);
+          break;
+        case 'MoveToMonitor5':
+          moveFocusedWindowToMonitor(4);
+          break;
+        case 'MoveToMonitor6':
+          moveFocusedWindowToMonitor(5);
+          break;
+        default:
+          invocation.return_error(new GLib.Error(
+            GLib.IO_ERROR_FAILED,
+            `Unknown method: ${method_name}`
+          ));
+          return;
+      }
+      invocation.return_value(null);
+    };
+
+    this._dbusConnection.connect('method-call', handler);
+
+    const [, , capturedEventId] = global.stage.connect('captured-event', (actor, event) => {
       if (this._pointerDragState?.timeoutId && pointerDragReleaseEvent(event)) {
         stopPointerDrag(this._pointerDragState);
       }
 
       return Clutter.EVENT_PROPAGATE;
     });
+    this._capturedEventId = capturedEventId;
 
     for (const binding of MONITOR_KEYBINDINGS) {
       Main.wm.addKeybinding(
@@ -498,6 +577,15 @@ export default class MonitorWindowHotkeysExtension extends Extension {
   }
 
   disable() {
+    if (this._dbusConnection) {
+      try {
+        this._dbusConnection.disconnect_by_func((conn, handler) => handler);
+      } catch (_) {
+        // Ignore errors during cleanup.
+      }
+      this._dbusConnection = null;
+    }
+
     if (this._pointerDragState) {
       stopPointerDrag(this._pointerDragState);
       this._pointerDragState = null;
