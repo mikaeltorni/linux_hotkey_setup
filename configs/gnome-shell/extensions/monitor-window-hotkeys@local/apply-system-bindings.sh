@@ -15,6 +15,9 @@ WM_BINDINGS=(
 
 WM_UNBINDINGS=(
   "minimize:<Alt><Super>R"
+  "maximize:<Super>Up"
+  "unmaximize:<Super>Down"
+  "minimize:<Super>Down"
 )
 
 TILING_BINDINGS=(

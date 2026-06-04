@@ -56,6 +56,8 @@ Important defaults:
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
+Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, `<Super>Right` for the right half, and `<Control>XF86Back` for the Ctrl+Back right-half tiler. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings so those vertical shortcuts reach the tiling actions.
+
 ## Troubleshooting
 
 - If the Ctrl+Back tiler cannot find a pointing device with a browser-back button, it skips the service setup.
