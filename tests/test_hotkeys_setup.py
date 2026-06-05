@@ -57,7 +57,7 @@ def test_exports_expected_hotkey_functions():
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
                 "declare -F configure_screenshot_binding configure_workspace_keys configure_albert_keybindings >/dev/null",
-                "declare -F configure_monitor_window_hotkeys_extension configure_workspace_number_popup_extension >/dev/null",
+                "declare -F configure_monitor_window_hotkeys_extension configure_automatic_window_tiling configure_workspace_number_popup_extension >/dev/null",
                 "declare -F select_input_device configure_ctrl_back_window_tiler_service lock_primary_paste configure_ubuntu_hotkeys >/dev/null",
             ]
         )
@@ -118,31 +118,22 @@ def test_monitor_window_hotkey_assets_exist():
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
 
 
-def test_super_t_tiles_focused_application_windows():
-    """Super+T should tile same-app windows on the focused monitor and workspace."""
-    extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"
-    extension = (extension_dir / "extension.js").read_text(encoding="utf-8")
-    schema = (
-        extension_dir
-        / "schemas"
-        / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml"
+def test_automatic_window_tiling_is_delegated_to_sibling_repository():
+    """Hotkey setup should call the standalone tiler with the configured binding."""
+    setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
+    extension = (
+        ROOT_DIR
+        / "configs"
+        / "gnome-shell"
+        / "extensions"
+        / "monitor-window-hotkeys@local"
+        / "extension.js"
     ).read_text(encoding="utf-8")
 
-    assert '<key name="tile-focused-application-windows"' in schema
-    assert "&lt;Super&gt;t" in schema
-    assert "['wm-class', 'get_wm_class']" in extension
-    assert "typeof appId === 'string' && appId.trim()" in extension
-    assert "global.workspace_manager.get_active_workspace()" in extension
-    assert "workspace.list_windows()" in extension
-    assert "workspace.get_work_area_for_monitor(monitorIndex)" in extension
-    assert "win.get_monitor() !== monitorIndex" in extension
-    assert ".filter(win => isTileCandidate(win, workspace, monitorIndex, applicationId))" in extension
-    assert "win.move_resize_frame(true, x1, y1, x2 - x1, y2 - y1)" in extension
-    assert "workArea.width >= workArea.height" in extension
-    assert "APPLICATION_TILE_KEY" in extension
-    assert "Gio.DBusExportedObject.wrapJSObject" in extension
-    assert "Gio.DBusSessionService" not in extension
-    assert "this._capturedEventId = global.stage.connect" in extension
+    assert "configure_automatic_window_tiling()" in setup
+    assert 'bash "$installer" "$AUTOMATIC_WINDOW_TILING_BINDING"' in setup
+    assert "AUTOMATIC_WINDOW_TILING_BINDING:=<Super>t" in setup
+    assert "tileFocusedApplicationWindows" not in extension
 
 
 def test_apply_system_bindings_reassigns_super_vertical_arrows_to_half_tiling():

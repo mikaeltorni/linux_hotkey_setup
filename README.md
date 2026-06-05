@@ -2,7 +2,7 @@
 
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
-It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service.
+It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository.
 
 ## Technology Stack
 
@@ -53,17 +53,17 @@ Important defaults:
 - `SCREEN_RECORDING_BINDINGS=('<Shift><Super>r')`
 - `OVERVIEW_BINDINGS=('<Super>Tab')`
 - `MONITOR_WINDOW_HOTKEYS_EXTENSION_ID=monitor-window-hotkeys@local`
+- `AUTOMATIC_WINDOW_TILING_DIR=../linux_automatic_window_tiling`
+- `AUTOMATIC_WINDOW_TILING_BINDING=<Super>t`
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, `<Super>Right` for the right half, and `<Control>XF86Back` for the Ctrl+Back right-half tiler. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings so those vertical shortcuts reach the tiling actions.
 
-`<Super>T` tiles normal windows from the focused application that are already
-on the same workspace and monitor as the focused window. It never pulls
-windows from another monitor. It uses the monitor work area so panels and
-docks are excluded. One window fills the work area, two windows stack
-top/bottom on a landscape monitor (left/right on portrait), four use a 2x2
-grid, and other counts use a balanced calculated grid.
+When `linux_automatic_window_tiling` exists beside this repository, the
+installer calls its parameterized installer with `<Super>t`. The standalone
+repository owns the extension, tiling behavior, schema, and general-purpose
+binding interface.
 
 ## Troubleshooting
 
@@ -90,17 +90,18 @@ sudo bash install.sh
 
 Keep hotkey values single-sourced. Extension-owned monitor/window bindings belong in the extension schema defaults; installer-owned GNOME system bindings belong in named arrays or `apply-system-bindings.sh`. Avoid hard-coded checkout paths; resolve assets through `SCRIPT_DIR` or `CONFIG_DIR`.
 
-## Part of 7-Repo Desktop Setup Chain
+## Part of 8-Repo Desktop Setup Chain
 
 This repository is **Phase 3** in the desktop setup chain:
 
 1. `linux_installations_setup` — Base packages, hardware, apps
 2. `linux_configuration_setup` — GNOME desktop, autostart, GSettings
-3. **`linux_hotkey_setup` (this repo)** — GNOME hotkeys and workspace bindings
-4. `agent_command_center` — Agent command center components
-5. `linux_programming_setup` — Cursor IDE, VS Code extensions
-6. `ubuntu_2404_taskbar_system_status_monitor` — Taskbar system monitor extension
-7. `phrase_automation` — Phrase automation tmux service
+3. `linux_automatic_window_tiling` — Parameterized automatic window tiling
+4. **`linux_hotkey_setup` (this repo)** — GNOME hotkeys and workspace bindings
+5. `agent_command_center` — Agent command center components
+6. `linux_programming_setup` — Cursor IDE, VS Code extensions
+7. `ubuntu_2404_taskbar_system_status_monitor` — Taskbar system monitor extension
+8. `phrase_automation` — Phrase automation tmux service
 
 It is automatically cloned and run by the main installer (`installation_scripts/install.sh`).
 

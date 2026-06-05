@@ -49,10 +49,6 @@
       <default>['&lt;Control&gt;&lt;Super&gt;Right']</default>
       <summary>Tile focused window to the right half of its monitor</summary>
     </key>
-    <key name="tile-focused-application-windows" type="as">
-      <default>['&lt;Super&gt;t']</default>
-      <summary>Tile focused application windows on the current workspace</summary>
-    </key>
     <key name="resize-active-window-left-out" type="as">
       <default>['&lt;Control&gt;&lt;Alt&gt;&lt;Super&gt;Q']</default>
       <summary>Move the focused window's left edge left</summary>
