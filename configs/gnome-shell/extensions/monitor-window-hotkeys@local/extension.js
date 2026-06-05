@@ -33,10 +33,13 @@ const RESIZE_KEYBINDINGS = [
 ];
 
 const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
+const APPLICATION_TILE_KEY = 'tile-focused-application-windows';
+const DBUS_BUS_NAME = 'org.gnome.shell.extensions.MonitorWindowHotkeys';
+const DBUS_OBJECT_PATH = '/org/gnome/shell/extensions/monitor_window_hotkeys';
 
 // D-Bus XML interface definition for programmatic window tiling.
 const DBUS_INTERFACE_XML = `
-<node name="/org/gnome/shell/extensions/monitor-window-hotkeys">
+<node name="/org/gnome/shell/extensions/monitor_window_hotkeys">
   <interface name="org.gnome.shell.extensions.MonitorWindowHotkeys">
     <method name="TileRightHalf"/>
     <method name="TileLeftHalf"/>
@@ -50,9 +53,6 @@ const DBUS_INTERFACE_XML = `
     <method name="MoveToMonitor6"/>
   </interface>
 </node>`;
-
-// Pre-parse the D-Bus XML into a node info structure.
-const _dbusNodeInfo = Gio.DBusNodeInfo.new_for_xml(DBUS_INTERFACE_XML);
 
 function getFocusWindow() {
   const win = global.display.focus_window;
@@ -157,6 +157,123 @@ function getWindowWorkArea(win) {
     : global.display.get_current_monitor();
 
   return win.get_work_area_for_monitor(monitorIndex);
+}
+
+function getWindowApplicationId(win) {
+  const identityMethods = [
+    ['gtk-application-id', 'get_gtk_application_id'],
+    ['sandboxed-app-id', 'get_sandboxed_app_id'],
+    ['wm-class', 'get_wm_class'],
+    ['wm-class-instance', 'get_wm_class_instance'],
+  ];
+  for (const [prefix, method] of identityMethods) {
+    const value = typeof win[method] === 'function' ? win[method]() : null;
+    if (typeof value === 'string' && value.trim()) {
+      return `${prefix}:${value.trim().toLowerCase()}`;
+    }
+  }
+
+  const app = Shell.WindowTracker.get_default().get_window_app(win);
+  const appId = app ? app.get_id() : null;
+  return typeof appId === 'string' && appId.trim()
+    ? `app:${appId.trim().toLowerCase()}`
+    : null;
+}
+
+function isTileCandidate(win, workspace, monitorIndex, applicationId) {
+  if (!canMoveResizeWindow(win) || getWindowApplicationId(win) !== applicationId) {
+    return false;
+  }
+
+  if (typeof win.get_monitor !== 'function' || win.get_monitor() !== monitorIndex) {
+    return false;
+  }
+
+  if (typeof win.located_on_workspace === 'function' && !win.located_on_workspace(workspace)) {
+    return false;
+  }
+
+  const skipTaskbar = typeof win.is_skip_taskbar === 'function'
+    ? win.is_skip_taskbar()
+    : win.skip_taskbar;
+  if (skipTaskbar) {
+    return false;
+  }
+
+  return typeof win.get_window_type !== 'function'
+    || win.get_window_type() === Meta.WindowType.NORMAL;
+}
+
+function chooseGrid(windowCount, workArea) {
+  if (windowCount === 1) {
+    return { rows: 1, columns: 1 };
+  }
+
+  if (windowCount === 2) {
+    return workArea.width >= workArea.height
+      ? { rows: 2, columns: 1 }
+      : { rows: 1, columns: 2 };
+  }
+
+  let best = null;
+  for (let rows = 1; rows <= windowCount; rows++) {
+    const columns = Math.ceil(windowCount / rows);
+    const emptyCells = rows * columns - windowCount;
+    const cellWidth = workArea.width / columns;
+    const cellHeight = workArea.height / rows;
+    const shapePenalty = Math.abs(Math.log(cellWidth / cellHeight));
+    const score = emptyCells * 2 + shapePenalty;
+
+    if (!best || score < best.score) {
+      best = { rows, columns, score };
+    }
+  }
+
+  return { rows: best.rows, columns: best.columns };
+}
+
+function tileFocusedApplicationWindows() {
+  const focusedWindow = getFocusWindow();
+  const applicationId = focusedWindow ? getWindowApplicationId(focusedWindow) : null;
+  if (!focusedWindow || !applicationId) {
+    return;
+  }
+
+  try {
+    const workspace = global.workspace_manager.get_active_workspace();
+    const monitorIndex = focusedWindow.get_monitor();
+    const workArea = workspace.get_work_area_for_monitor(monitorIndex);
+    const windows = workspace.list_windows()
+      .filter(win => isTileCandidate(win, workspace, monitorIndex, applicationId))
+      .sort((left, right) => left.get_stable_sequence() - right.get_stable_sequence());
+
+    const focusedIndex = windows.indexOf(focusedWindow);
+    if (focusedIndex > 0) {
+      windows.splice(focusedIndex, 1);
+      windows.unshift(focusedWindow);
+    }
+    if (windows.length === 0 || workArea.width <= 0 || workArea.height <= 0) {
+      return;
+    }
+
+    const { rows, columns } = chooseGrid(windows.length, workArea);
+    for (let index = 0; index < windows.length; index++) {
+      const win = windows[index];
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      const x1 = workArea.x + Math.floor(column * workArea.width / columns);
+      const x2 = workArea.x + Math.floor((column + 1) * workArea.width / columns);
+      const y1 = workArea.y + Math.floor(row * workArea.height / rows);
+      const y2 = workArea.y + Math.floor((row + 1) * workArea.height / rows);
+
+      prepareWindowForMoveResize(win);
+      win.move_resize_frame(true, x1, y1, x2 - x1, y2 - y1);
+    }
+
+    raiseWindow(focusedWindow);
+  } catch (error) {
+    console.error(`monitor-window-hotkeys: failed to tile application windows: ${error}`);
+  }
 }
 
 function resizeFocusedWindow(edge, direction) {
@@ -449,65 +566,38 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       windowY: 0,
     };
 
-    // Expose D-Bus methods for programmatic window tiling.
-    this._dbusConnection = new Gio.DBusSessionService({
-      bus_name: 'org.gnome.shell.extensions.MonitorWindowHotkeys',
-      introspection_data: _dbusNodeInfo,
-    });
-
-    // Handle D-Bus method calls by dispatching to the appropriate tile function.
-    const handler = (connection, sender, object_path, interface_name, method_name, params, invocation) => {
-      switch (method_name) {
-        case 'TileRightHalf':
-          tileFocusedWindowRightHalf();
-          break;
-        case 'TileLeftHalf':
-          tileFocusedWindowLeftHalf();
-          break;
-        case 'TileTopHalf':
-          tileFocusedWindowTopHalf();
-          break;
-        case 'TileBottomHalf':
-          tileFocusedWindowBottomHalf();
-          break;
-        case 'MoveToMonitor1':
-          moveFocusedWindowToMonitor(0);
-          break;
-        case 'MoveToMonitor2':
-          moveFocusedWindowToMonitor(1);
-          break;
-        case 'MoveToMonitor3':
-          moveFocusedWindowToMonitor(2);
-          break;
-        case 'MoveToMonitor4':
-          moveFocusedWindowToMonitor(3);
-          break;
-        case 'MoveToMonitor5':
-          moveFocusedWindowToMonitor(4);
-          break;
-        case 'MoveToMonitor6':
-          moveFocusedWindowToMonitor(5);
-          break;
-        default:
-          invocation.return_error(new GLib.Error(
-            GLib.IO_ERROR_FAILED,
-            `Unknown method: ${method_name}`
-          ));
-          return;
-      }
-      invocation.return_value(null);
+    const dbusImplementation = {
+      TileRightHalf: tileFocusedWindowRightHalf,
+      TileLeftHalf: tileFocusedWindowLeftHalf,
+      TileTopHalf: tileFocusedWindowTopHalf,
+      TileBottomHalf: tileFocusedWindowBottomHalf,
+      MoveToMonitor1: () => moveFocusedWindowToMonitor(0),
+      MoveToMonitor2: () => moveFocusedWindowToMonitor(1),
+      MoveToMonitor3: () => moveFocusedWindowToMonitor(2),
+      MoveToMonitor4: () => moveFocusedWindowToMonitor(3),
+      MoveToMonitor5: () => moveFocusedWindowToMonitor(4),
+      MoveToMonitor6: () => moveFocusedWindowToMonitor(5),
     };
+    this._dbusObject = Gio.DBusExportedObject.wrapJSObject(
+      DBUS_INTERFACE_XML,
+      dbusImplementation,
+    );
+    this._dbusObject.export(Gio.DBus.session, DBUS_OBJECT_PATH);
+    this._dbusOwnerId = Gio.bus_own_name_on_connection(
+      Gio.DBus.session,
+      DBUS_BUS_NAME,
+      Gio.BusNameOwnerFlags.NONE,
+      null,
+      null,
+    );
 
-    this._dbusConnection.connect('method-call', handler);
-
-    const [, , capturedEventId] = global.stage.connect('captured-event', (actor, event) => {
+    this._capturedEventId = global.stage.connect('captured-event', (actor, event) => {
       if (this._pointerDragState?.timeoutId && pointerDragReleaseEvent(event)) {
         stopPointerDrag(this._pointerDragState);
       }
 
       return Clutter.EVENT_PROPAGATE;
     });
-    this._capturedEventId = capturedEventId;
 
     for (const binding of MONITOR_KEYBINDINGS) {
       Main.wm.addKeybinding(
@@ -574,16 +664,26 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       () => startPointerDrag(this._pointerDragState),
     );
     this._keybindings.push(POINTER_DRAG_KEY);
+
+    Main.wm.addKeybinding(
+      APPLICATION_TILE_KEY,
+      this._settings,
+      Meta.KeyBindingFlags.NONE,
+      Shell.ActionMode.NORMAL,
+      tileFocusedApplicationWindows,
+    );
+    this._keybindings.push(APPLICATION_TILE_KEY);
   }
 
   disable() {
-    if (this._dbusConnection) {
-      try {
-        this._dbusConnection.disconnect_by_func((conn, handler) => handler);
-      } catch (_) {
-        // Ignore errors during cleanup.
-      }
-      this._dbusConnection = null;
+    if (this._dbusOwnerId) {
+      Gio.bus_unown_name(this._dbusOwnerId);
+      this._dbusOwnerId = null;
+    }
+
+    if (this._dbusObject) {
+      this._dbusObject.unexport();
+      this._dbusObject = null;
     }
 
     if (this._pointerDragState) {

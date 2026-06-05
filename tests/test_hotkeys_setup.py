@@ -118,6 +118,33 @@ def test_monitor_window_hotkey_assets_exist():
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
 
 
+def test_super_t_tiles_focused_application_windows():
+    """Super+T should tile same-app windows on the focused monitor and workspace."""
+    extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"
+    extension = (extension_dir / "extension.js").read_text(encoding="utf-8")
+    schema = (
+        extension_dir
+        / "schemas"
+        / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml"
+    ).read_text(encoding="utf-8")
+
+    assert '<key name="tile-focused-application-windows"' in schema
+    assert "&lt;Super&gt;t" in schema
+    assert "['wm-class', 'get_wm_class']" in extension
+    assert "typeof appId === 'string' && appId.trim()" in extension
+    assert "global.workspace_manager.get_active_workspace()" in extension
+    assert "workspace.list_windows()" in extension
+    assert "workspace.get_work_area_for_monitor(monitorIndex)" in extension
+    assert "win.get_monitor() !== monitorIndex" in extension
+    assert ".filter(win => isTileCandidate(win, workspace, monitorIndex, applicationId))" in extension
+    assert "win.move_resize_frame(true, x1, y1, x2 - x1, y2 - y1)" in extension
+    assert "workArea.width >= workArea.height" in extension
+    assert "APPLICATION_TILE_KEY" in extension
+    assert "Gio.DBusExportedObject.wrapJSObject" in extension
+    assert "Gio.DBusSessionService" not in extension
+    assert "this._capturedEventId = global.stage.connect" in extension
+
+
 def test_apply_system_bindings_reassigns_super_vertical_arrows_to_half_tiling():
     """System binding application should free Super+Up/Down for top/bottom tiling."""
     extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"

@@ -58,6 +58,13 @@ Extension-owned monitor/window keybindings live in the extension schema defaults
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, `<Super>Right` for the right half, and `<Control>XF86Back` for the Ctrl+Back right-half tiler. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings so those vertical shortcuts reach the tiling actions.
 
+`<Super>T` tiles normal windows from the focused application that are already
+on the same workspace and monitor as the focused window. It never pulls
+windows from another monitor. It uses the monitor work area so panels and
+docks are excluded. One window fills the work area, two windows stack
+top/bottom on a landscape monitor (left/right on portrait), four use a 2x2
+grid, and other counts use a balanced calculated grid.
+
 ## Troubleshooting
 
 - If the Ctrl+Back tiler cannot find a pointing device with a browser-back button, it skips the service setup.
