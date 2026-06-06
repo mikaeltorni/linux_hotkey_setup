@@ -20,7 +20,7 @@ WM_UNBINDINGS=(
   "minimize:<Super>Down"
 )
 
-TILING_BINDINGS=(
+TILING_UNBINDINGS=(
   "tile-top-half:<Control><Super>X"
   "tile-top-half:<Super>Up"
   "tile-bottom-half:<Control><Super>W"
@@ -148,33 +148,6 @@ remove_binding_entries() {
   done
 }
 
-
-set_binding_entries() {
-  local schema="$1"
-  shift
-
-  # Accumulate all values per key, then set each key once.
-  declare -A accum
-  for entry in "$@"; do
-    key="${entry%%:*}"
-    value="${entry#*:}"
-    if [[ -n "${accum[$key]+x}" ]]; then
-      accum[$key]="${accum[$key]},$value"
-    else
-      accum[$key]="$value"
-    fi
-  done
-
-  for key in "${!accum[@]}"; do
-    local values="${accum[$key]}"
-    # Build gsettings array string using printf to avoid quote issues.
-    IFS=',' read -ra parts <<< "$values"
-    local arr
-    arr="$(printf '[%s]' "$(printf '"%s"' "${parts[0]}")$(for ((i=1; i<${#parts[@]}; i++)); do printf ', "%s"' "${parts[$i]}"; done)")"
-    gsettings set "$schema" "$key" "$arr"
-  done
-}
-
 compile_extension_schema
 
 if ! extension_schema_exists; then
@@ -191,9 +164,9 @@ gsettings set org.gnome.desktop.wm.preferences resize-with-right-button true
 
 if schema_exists "$TILING_SCHEMA"; then
   gsettings set "$TILING_SCHEMA" enable-tiling-popup false
-  set_binding_entries "$TILING_SCHEMA" "${TILING_BINDINGS[@]}"
+  remove_binding_entries "$TILING_SCHEMA" "${TILING_UNBINDINGS[@]}"
 else
-  printf 'Tiling Assistant settings schema not found; skipping half-screen tiling aliases.\n'
+  printf 'Tiling Assistant settings schema not found; skipping conflicting binding cleanup.\n'
 fi
 
 ensure_enabled_extension

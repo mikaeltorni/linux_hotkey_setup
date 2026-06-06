@@ -267,16 +267,22 @@ raise SystemExit(f"unsupported fake gsettings args: {args}")
     assert "<Super>Down" not in ast.literal_eval(
         latest_value("org.gnome.desktop.wm.keybindings", "minimize")
     )
-    assert "<Super>Up" in ast.literal_eval(
+    assert "<Super>Up" not in ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-top-half")
     )
-    assert "<Super>Down" in ast.literal_eval(
+    schema = (
+        extension_dir
+        / "schemas"
+        / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml"
+    ).read_text(encoding="utf-8")
+    assert "&lt;Control&gt;&lt;Super&gt;X', '&lt;Super&gt;Up" in schema
+    assert "<Super>Down" not in ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-bottom-half")
     )
     right_bindings = ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-right-half")
     )
-    assert "<Super>Right" in right_bindings
+    assert "<Super>Right" not in right_bindings
     assert "<Control>XF86Back" not in right_bindings
 
 
