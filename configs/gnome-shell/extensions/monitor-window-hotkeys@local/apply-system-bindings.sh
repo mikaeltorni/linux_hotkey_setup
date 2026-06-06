@@ -27,7 +27,6 @@ TILING_BINDINGS=(
   "tile-bottom-half:<Super>Down"
   "tile-left-half:<Control><Super>C"
   "tile-left-half:<Super>Left"
-  "tile-right-half:<Control>XF86Back"
   "tile-right-half:<Super>Right"
 )
 

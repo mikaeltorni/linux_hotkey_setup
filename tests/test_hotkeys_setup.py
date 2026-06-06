@@ -273,6 +273,11 @@ raise SystemExit(f"unsupported fake gsettings args: {args}")
     assert "<Super>Down" in ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-bottom-half")
     )
+    right_bindings = ast.literal_eval(
+        latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-right-half")
+    )
+    assert "<Super>Right" in right_bindings
+    assert "<Control>XF86Back" not in right_bindings
 
 
 if __name__ == "__main__":
