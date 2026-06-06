@@ -49,6 +49,14 @@ DBUS_OBJECT_PATH = "/org/gnome/shell/extensions/monitor_window_hotkeys"
 DBUS_INTERFACE = "org.gnome.shell.extensions.MonitorWindowHotkeys"
 
 
+def input_device_sort_key(path: str) -> tuple[int, int | str]:
+    """Sort event device paths by their numeric suffix when available."""
+    prefix, separator, suffix = path.rpartition("event")
+    if separator and prefix.endswith("/dev/input/") and suffix.isdigit():
+        return (0, int(suffix))
+    return (1, path)
+
+
 @dataclass
 class WatchedDevice:
     """An input device and whether its events are intercepted."""
@@ -181,9 +189,8 @@ class CtrlBackWindowTiler:
 
     def _scan_devices(self) -> None:
         """Add newly available pointer and Ctrl-capable input devices."""
-        paths = sorted(list_devices())
-        if not self.pointer_path:
-            self.pointer_path = self._find_pointer_path(paths)
+        paths = sorted(list_devices(), key=input_device_sort_key)
+        self.pointer_path = self._select_pointer_path(paths)
 
         open_paths = {entry.device.path for entry in self.devices}
         for path in paths:
@@ -226,6 +233,18 @@ class CtrlBackWindowTiler:
             self.devices.append(WatchedDevice(device=device, grabbed=grabbed))
             mode = "grabbed pointer" if grabbed else "Ctrl monitor"
             print(f"watching {path}: {device.name} [{mode}]", flush=True)
+
+    def _select_pointer_path(self, paths: list[str]) -> str:
+        """Resolve a configured stable path or auto-detect an available pointer."""
+        if self.target_device:
+            resolved_path = os.path.realpath(self.target_device)
+            if resolved_path in paths:
+                return resolved_path
+            return ""
+
+        if self.pointer_path in paths:
+            return self.pointer_path
+        return self._find_pointer_path(paths)
 
     def _find_pointer_path(self, paths: list[str]) -> str:
         """Choose the first non-keyboard pointing node with a back button."""

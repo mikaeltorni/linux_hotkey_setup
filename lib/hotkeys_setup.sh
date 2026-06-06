@@ -483,10 +483,30 @@ select_input_device() {
   local device_list
   device_list="$(python3 -c '
 from evdev import InputDevice, ecodes, list_devices
+from pathlib import Path
+
 BACK_CODES = {ecodes.KEY_BACK, ecodes.BTN_SIDE, ecodes.BTN_EXTRA}
 POINTER_RELS = {ecodes.REL_X, ecodes.REL_Y}
+
+def event_sort_key(path):
+    suffix = path.rsplit("event", 1)[-1]
+    return (0, int(suffix)) if suffix.isdigit() else (1, path)
+
+def stable_device_path(path):
+    resolved = Path(path).resolve()
+    by_id = Path("/dev/input/by-id")
+    if by_id.is_dir():
+        aliases = [
+            alias
+            for alias in by_id.iterdir()
+            if "event-mouse" in alias.name and alias.resolve() == resolved
+        ]
+        if aliases:
+            return str(sorted(aliases)[0])
+    return path
+
 devices = []
-for path in sorted(list_devices()):
+for path in sorted(list_devices(), key=event_sort_key):
     try:
         dev = InputDevice(path)
     except OSError:
@@ -500,7 +520,7 @@ for path in sorted(list_devices()):
     if "Keychron" in dev.name or "ctrl-back-window-tiler" in dev.name:
         dev.close()
         continue
-    devices.append((dev.path, dev.name))
+    devices.append((stable_device_path(dev.path), dev.name))
     dev.close()
 for path, name in devices:
     print(f"{path}|{name}")

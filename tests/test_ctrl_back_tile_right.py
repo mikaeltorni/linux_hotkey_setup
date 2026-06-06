@@ -49,6 +49,51 @@ def event(code: int, value: int):
     return SimpleNamespace(type=ecodes.EV_KEY, code=code, value=value)
 
 
+def test_input_devices_are_sorted_by_numeric_event_suffix():
+    paths = [
+        "/dev/input/event13",
+        "/dev/input/event4",
+        "/dev/input/event6",
+    ]
+
+    assert sorted(paths, key=MODULE.input_device_sort_key) == [
+        "/dev/input/event4",
+        "/dev/input/event6",
+        "/dev/input/event13",
+    ]
+
+
+def test_configured_stable_pointer_path_is_resolved(monkeypatch):
+    tiler = MODULE.CtrlBackWindowTiler.__new__(MODULE.CtrlBackWindowTiler)
+    tiler.target_device = "/dev/input/by-id/razer-event-mouse"
+    tiler.pointer_path = ""
+    monkeypatch.setattr(
+        MODULE.os.path,
+        "realpath",
+        lambda path: "/dev/input/event4",
+    )
+
+    assert tiler._select_pointer_path(
+        ["/dev/input/event4", "/dev/input/event13"]
+    ) == "/dev/input/event4"
+
+
+def test_missing_configured_pointer_does_not_fall_back(monkeypatch):
+    tiler = MODULE.CtrlBackWindowTiler.__new__(MODULE.CtrlBackWindowTiler)
+    tiler.target_device = "/dev/input/by-id/razer-event-mouse"
+    tiler.pointer_path = "/dev/input/event4"
+    monkeypatch.setattr(
+        MODULE.os.path,
+        "realpath",
+        lambda path: "/dev/input/event99",
+    )
+    tiler._find_pointer_path = lambda paths: (_ for _ in ()).throw(
+        AssertionError("must not select another mouse")
+    )
+
+    assert tiler._select_pointer_path(["/dev/input/event13"]) == ""
+
+
 def test_ctrl_back_is_consumed_and_tiles_once():
     tiler = make_tiler()
     calls = []
