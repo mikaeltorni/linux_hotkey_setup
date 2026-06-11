@@ -148,6 +148,11 @@ class CtrlBackWindowTiler:
             self.ui = None
 
     def _stop(self, *_args: object) -> None:
+        """Signal handler that requests a clean shutdown of the run loop.
+
+        Args:
+            *_args: Signal number and frame passed by the signal module; unused.
+        """
         self.running = False
 
     def _create_dbus_proxy(self) -> Gio.DBusProxy:
@@ -266,12 +271,29 @@ class CtrlBackWindowTiler:
 
     @staticmethod
     def _is_back_pointer(caps: dict[int, list[int]]) -> bool:
+        """Return whether a device is a relative pointer with a back button.
+
+        Args:
+            caps: Device capabilities keyed by evdev event type.
+
+        Returns:
+            True when the device reports both pointer motion (REL_X/REL_Y) and a
+            back-button key code, i.e. it is the kind of mouse we can grab.
+        """
         keys = set(caps.get(ecodes.EV_KEY, []))
         rels = set(caps.get(ecodes.EV_REL, []))
         return bool(keys & BACK_CODES) and bool(rels & POINTER_REL_CODES)
 
     @staticmethod
     def _grab_pointer(device: InputDevice) -> bool:
+        """Exclusively grab a pointer device so its events can be intercepted.
+
+        Args:
+            device: The input device to grab.
+
+        Returns:
+            True if the grab succeeded; False if it failed (logged to stderr).
+        """
         try:
             device.grab()
             return True
@@ -284,11 +306,24 @@ class CtrlBackWindowTiler:
             return False
 
     def _add_forward_capabilities(self, caps: dict[int, list[int]]) -> None:
+        """Record a grabbed device's forwardable event codes.
+
+        Only forwardable event types (keys and relative axes) are kept so the
+        virtual uinput device can replay non-suppressed events.
+
+        Args:
+            caps: Capabilities of the grabbed device keyed by evdev event type.
+        """
         for event_type, codes in caps.items():
             if event_type in FORWARD_EVENT_TYPES:
                 self.forward_capabilities.setdefault(event_type, set()).update(codes)
 
     def _open_uinput(self) -> None:
+        """(Re)create the virtual uinput device used to forward pass-through events.
+
+        Closes any existing device first. Does nothing when no forward
+        capabilities have been collected (i.e. no pointer is grabbed).
+        """
         if self.ui:
             try:
                 self.ui.close()
@@ -309,6 +344,11 @@ class CtrlBackWindowTiler:
         )
 
     def _rescan_devices(self) -> None:
+        """Periodically pick up hot-plugged devices, rebuilding uinput if needed.
+
+        Throttled to at most once per RESCAN_INTERVAL_SECONDS. The virtual
+        device is only reopened when the set of forwardable capabilities changed.
+        """
         now = time.monotonic()
         if now - self.last_scan_at < RESCAN_INTERVAL_SECONDS:
             return
@@ -323,12 +363,22 @@ class CtrlBackWindowTiler:
             self._open_uinput()
 
     def _reopen_devices(self) -> None:
+        """Recover from a device read/select error by closing and reopening all.
+
+        When no device is explicitly configured, the cached pointer path is
+        cleared so auto-detection runs again on reopen.
+        """
         self.close()
         if not self.target_device:
             self.pointer_path = ""
         self._open_devices()
 
     def _clear_device_state(self, path: str) -> None:
+        """Drop cached Ctrl/suppression state for a device being closed.
+
+        Args:
+            path: Event device path whose pending key state should be forgotten.
+        """
         self.ctrl_pressed = {
             key for key in self.ctrl_pressed if key[0] != path
         }
@@ -337,6 +387,15 @@ class CtrlBackWindowTiler:
         }
 
     def _handle_event(self, entry: WatchedDevice, event) -> None:
+        """Dispatch a single evdev event to the appropriate handler.
+
+        Non-key events from grabbed devices are forwarded verbatim; key events
+        are routed to the Ctrl, Back, or generic-forward paths.
+
+        Args:
+            entry: The watched device the event came from.
+            event: The evdev input event to process.
+        """
         if event.type != ecodes.EV_KEY:
             if entry.grabbed:
                 self._forward_event(event.type, event.code, event.value)
@@ -354,6 +413,12 @@ class CtrlBackWindowTiler:
             self._forward_event(event.type, event.code, event.value)
 
     def _handle_ctrl_event(self, entry: WatchedDevice, event) -> None:
+        """Track Ctrl press/release state and forward it if grabbed.
+
+        Args:
+            entry: The watched device the Ctrl event came from.
+            event: The Ctrl key event (value 0 = release, otherwise pressed).
+        """
         key = (entry.device.path, event.code)
         if event.value == 0:
             self.ctrl_pressed.discard(key)
@@ -364,6 +429,16 @@ class CtrlBackWindowTiler:
             self._forward_event(event.type, event.code, event.value)
 
     def _handle_back_event(self, entry: WatchedDevice, event) -> None:
+        """Handle a Back button event, tiling on Ctrl+Back or forwarding it.
+
+        On a Ctrl+Back press the event is suppressed (when grabbed) and the
+        right-half tiler is invoked; the matching release is also swallowed so
+        applications never see the click. Plain Back is forwarded unchanged.
+
+        Args:
+            entry: The watched device the Back event came from.
+            event: The Back key event (value 1 = press, 0 = release).
+        """
         key = (entry.device.path, event.code)
 
         if event.value == 1 and self.ctrl_pressed:
@@ -381,6 +456,16 @@ class CtrlBackWindowTiler:
             self._forward_event(event.type, event.code, event.value)
 
     def _forward_event(self, event_type: int, code: int, value: int) -> None:
+        """Replay an intercepted event through the virtual uinput device.
+
+        Silently drops the event when no virtual device exists or the code is
+        not part of the device's declared capabilities.
+
+        Args:
+            event_type: evdev event type (e.g. EV_KEY, EV_REL).
+            code: Event code within that type.
+            value: Event value (key state or relative delta).
+        """
         if not self.ui:
             return
         if code not in self.forward_capabilities.get(event_type, set()):
