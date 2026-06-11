@@ -275,7 +275,7 @@ raise SystemExit(f"unsupported fake gsettings args: {args}")
         / "schemas"
         / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml"
     ).read_text(encoding="utf-8")
-    assert "&lt;Control&gt;&lt;Super&gt;X', '&lt;Super&gt;Up" in schema
+    assert "&lt;Super&gt;Up', '&lt;Control&gt;&lt;Super&gt;X" in schema
     assert "<Super>Down" not in ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-bottom-half")
     )
