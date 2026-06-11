@@ -17,7 +17,6 @@ const MONITOR_KEYBINDINGS = [
 
 const RESIZE_STEP = 40;
 const POINTER_DRAG_INTERVAL_MS = 8;
-const POINTER_DRAG_MODIFIERS = Clutter.ModifierType.MOD1_MASK | Clutter.ModifierType.MOD4_MASK;
 const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 
@@ -444,8 +443,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       window: null,
       pointerX: 0,
       pointerY: 0,
-      windowX: 0,
-      windowY: 0,
     };
 
     const dbusImplementation = {
