@@ -2,12 +2,12 @@
 # install.sh — standalone Ubuntu GNOME hotkey setup.
 #
 # Components:
-#   - ensure_root(): Require sudo for system-owned install paths.
 #   - main(): Apply screenshot, workspace, Albert, monitor/window, Ctrl+Back,
 #     numbered workspace popup, and primary-paste-blocker hotkey setup.
 #
 # Usage:
-#   sudo bash install.sh
+#   bash install.sh        # user-level setup; apt steps are skipped and reported
+#   sudo bash install.sh   # full setup including apt package installation
 
 set -euo pipefail
 
@@ -59,18 +59,11 @@ SUPER_ARROW_MOVE_BINDINGS=(
   "move-to-workspace-up:<Super><Shift>Up"
 )
 
-ensure_root() {
-  if [ "$(id -u)" -ne 0 ]; then
-    printf 'Please run with sudo: sudo bash install.sh\n' >&2
-    exit 1
-  fi
-}
-
 main() {
-  ensure_root
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/lib/hotkeys_setup.sh"
   configure_ubuntu_hotkeys
+  report_sudo_required
   msg "Ubuntu hotkey setup complete. Log out and back in before testing GNOME Shell extension changes."
 }
 

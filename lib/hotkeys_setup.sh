@@ -93,15 +93,48 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# is_root — Return success when running with root privileges.
+is_root() {
+  [ "$(id -u)" -eq 0 ]
+}
+
+# Steps that were skipped because they need root; reported at the end of the run.
+SUDO_REQUIRED_STEPS=()
+
+# note_sudo_required — Record a root-only step that was skipped in user mode.
+note_sudo_required() {
+  SUDO_REQUIRED_STEPS+=("$1")
+  msg "SKIP (requires sudo): $1"
+}
+
+# report_sudo_required — Print the root-only steps that were skipped, if any.
+report_sudo_required() {
+  [ "${#SUDO_REQUIRED_STEPS[@]}" -eq 0 ] && return 0
+  msg "The following steps still require root and were skipped:"
+  printf '    - %s\n' "${SUDO_REQUIRED_STEPS[@]}"
+  msg "Apply them with: sudo bash install.sh"
+}
+
 run_as_target() {
-  sudo -H -u "$TARGET_USER" env \
-    HOME="$TARGET_HOME" \
-    USER="$TARGET_USER" \
-    LOGNAME="$TARGET_USER" \
-    XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-    DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
-    DISPLAY="$DISPLAY_VAL" \
-    "$@"
+  if [ "$(id -un)" = "$TARGET_USER" ]; then
+    env \
+      HOME="$TARGET_HOME" \
+      USER="$TARGET_USER" \
+      LOGNAME="$TARGET_USER" \
+      XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+      DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+      DISPLAY="$DISPLAY_VAL" \
+      "$@"
+  else
+    sudo -H -u "$TARGET_USER" env \
+      HOME="$TARGET_HOME" \
+      USER="$TARGET_USER" \
+      LOGNAME="$TARGET_USER" \
+      XDG_RUNTIME_DIR="$RUNTIME_DIR" \
+      DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
+      DISPLAY="$DISPLAY_VAL" \
+      "$@"
+  fi
 }
 
 apt_update_once() {
@@ -113,8 +146,17 @@ apt_update_once() {
 }
 
 apt_install() {
+  local missing=() pkg
+  for pkg in "$@"; do
+    dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+  done
+  [ "${#missing[@]}" -eq 0 ] && return 0
+  if ! is_root; then
+    note_sudo_required "apt install ${missing[*]}"
+    return 0
+  fi
   apt_update_once
-  DEBIAN_FRONTEND=noninteractive apt install -y "$@"
+  DEBIAN_FRONTEND=noninteractive apt install -y "${missing[@]}"
 }
 
 reload_systemd_daemon() {
@@ -316,9 +358,15 @@ configure_monitor_window_hotkeys_extension() {
     return 0
   fi
 
-  install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ext_dir"
+  if is_root; then
+    install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ext_dir"
+  else
+    install -d "$ext_dir"
+  fi
   cp -a "$source_dir/." "$ext_dir/"
-  chown -R "$TARGET_USER:$TARGET_USER" "$ext_dir"
+  if is_root; then
+    chown -R "$TARGET_USER:$TARGET_USER" "$ext_dir"
+  fi
   run_as_target chmod +x "$ext_dir/apply-system-bindings.sh"
 
   if ! need_cmd glib-compile-schemas; then
@@ -573,7 +621,11 @@ configure_ctrl_back_window_tiler_service() {
 
   local device_filter="${SELECTED_INPUT_DEVICE:-}"
   run_as_target mkdir -p "$(dirname "$service_target")"
-  install -D -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$script_source" "$script_target"
+  if is_root; then
+    install -D -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$script_source" "$script_target"
+  else
+    install -D -m 0755 "$script_source" "$script_target"
+  fi
   run_as_target tee "$service_target" >/dev/null <<EOF
 [Unit]
 Description=Ctrl + browser-back window right-half tiler
