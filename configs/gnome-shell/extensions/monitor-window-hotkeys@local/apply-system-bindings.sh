@@ -21,6 +21,7 @@ WM_UNBINDINGS=(
 )
 
 TILING_UNBINDINGS=(
+  "tile-maximize:<Super>Up"
   "tile-top-half:<Control><Super>X"
   "tile-top-half:<Super>Up"
   "tile-bottom-half:<Control><Super>W"

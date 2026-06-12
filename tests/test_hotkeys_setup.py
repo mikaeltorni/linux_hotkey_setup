@@ -163,6 +163,7 @@ DEFAULTS = {
     ("org.gnome.desktop.wm.keybindings", "unmaximize"): "['<Super>Down', '<Alt>F5']",
     ("org.gnome.desktop.wm.keybindings", "minimize"): "['<Super>Down', '<Alt><Super>R']",
     ("org.gnome.shell", "enabled-extensions"): "[]",
+    ("org.gnome.shell.extensions.tiling-assistant", "tile-maximize"): "['<Super>Up', '<Super>KP_5']",
     ("org.gnome.shell.extensions.tiling-assistant", "tile-top-half"): "[]",
     ("org.gnome.shell.extensions.tiling-assistant", "tile-bottom-half"): "[]",
     ("org.gnome.shell.extensions.tiling-assistant", "tile-left-half"): "[]",
@@ -270,6 +271,11 @@ raise SystemExit(f"unsupported fake gsettings args: {args}")
     assert "<Super>Up" not in ast.literal_eval(
         latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-top-half")
     )
+    maximize_bindings = ast.literal_eval(
+        latest_value("org.gnome.shell.extensions.tiling-assistant", "tile-maximize")
+    )
+    assert "<Super>Up" not in maximize_bindings
+    assert "<Super>KP_5" in maximize_bindings
     schema = (
         extension_dir
         / "schemas"
