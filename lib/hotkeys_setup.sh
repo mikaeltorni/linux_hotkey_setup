@@ -2,7 +2,7 @@
 # hotkeys_setup.sh — Ubuntu GNOME hotkey setup helpers.
 #
 # Components:
-#   - configure_screenshot_binding(): Bind screenshot and screen recording keys.
+#   - configure_screenshot_binding(): Bind screenshot keys; unbind screen recording.
 #   - configure_workspace_keys(): Bind numbered workspace switching/moving keys.
 #   - configure_albert_keybindings(): Bind Albert launcher shortcuts.
 #   - configure_monitor_window_hotkeys_extension(): Install monitor/window GNOME Shell hotkeys.
@@ -40,7 +40,6 @@ HOTKEYS_SETUP_CONFIG_DIR="$HOTKEYS_SETUP_DIR/configs"
 
 SCREENSHOT_UI_BINDINGS=("${SCREENSHOT_UI_BINDINGS[@]:-<Shift><Super>s}")
 SCREENSHOT_QUICK_BINDINGS=("${SCREENSHOT_QUICK_BINDINGS[@]:-Print}")
-SCREEN_RECORDING_BINDINGS=("${SCREEN_RECORDING_BINDINGS[@]:-<Shift><Super>r}")
 OVERVIEW_BINDINGS=("${OVERVIEW_BINDINGS[@]:-<Super>Tab}")
 WORKSPACE_SWITCH_BINDINGS=("${WORKSPACE_SWITCH_BINDINGS[@]:-1:<Super>Z}" "${WORKSPACE_SWITCH_BINDINGS[@]:1}")
 WORKSPACE_MOVE_BINDINGS=("${WORKSPACE_MOVE_BINDINGS[@]:-1:<Super><Shift>z}" "${WORKSPACE_MOVE_BINDINGS[@]:1}")
@@ -294,7 +293,9 @@ configure_screenshot_binding() {
 
   set_gsettings_strv_if_key_exists org.gnome.shell.keybindings show-screenshot-ui "${SCREENSHOT_UI_BINDINGS[@]}"
   set_gsettings_strv_if_key_exists org.gnome.shell.keybindings screenshot "${SCREENSHOT_QUICK_BINDINGS[@]}"
-  set_gsettings_strv_if_key_exists org.gnome.shell.keybindings show-screen-recording-ui "${SCREEN_RECORDING_BINDINGS[@]}"
+  # Leave screen recording (Shift+Super+R) unbound so it cannot shadow our
+  # move-to-workspace-8 hotkey.
+  set_gsettings_strv_if_key_exists org.gnome.shell.keybindings show-screen-recording-ui
   set_gsettings_strv_if_key_exists org.gnome.settings-daemon.plugins.media-keys screenshot "${SCREENSHOT_QUICK_BINDINGS[@]}"
   set_gsettings_strv_if_key_exists org.gnome.settings-daemon.plugins.media-keys screenshot-clip "${SCREENSHOT_QUICK_BINDINGS[@]}"
 

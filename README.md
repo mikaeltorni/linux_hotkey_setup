@@ -50,7 +50,6 @@ Important defaults:
 - `WORKSPACE_COUNT=8`
 - `SCREENSHOT_UI_BINDINGS=('<Shift><Super>s')`
 - `SCREENSHOT_QUICK_BINDINGS=('Print')`
-- `SCREEN_RECORDING_BINDINGS=('<Shift><Super>r')`
 - `OVERVIEW_BINDINGS=('<Super>Tab')`
 - `MONITOR_WINDOW_HOTKEYS_EXTENSION_ID=monitor-window-hotkeys@local`
 - `AUTOMATIC_WINDOW_TILING_DIR=../linux_automatic_window_tiling`
