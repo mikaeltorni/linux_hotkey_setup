@@ -1,5 +1,7 @@
 # Ubuntu Hotkeys Setup
 
+> Part of [installation_scripts](https://github.com/mikaeltorni/installation_scripts) — the master installer that orchestrates a productivity-focused Ubuntu 24.04 desktop setup (workspaces, hotkeys, window tiling, programming tools, and more).
+
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
 It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository.
