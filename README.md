@@ -34,7 +34,7 @@ python3 -m pytest tests -q
 Run shell syntax validation:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh lib/xmousepasteblock.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 ```
 
 ## Project Structure
@@ -44,6 +44,7 @@ bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_hel
 - `lib/ctrl_back_tiler.sh` - pointing-device selection and Ctrl+Back user-service installation.
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
 - `lib/workspace_popup.sh` - numbered workspace popup extension installation and legacy cleanup.
+- `lib/xmousepasteblock.sh` - primary clipboard lock (xmousepasteblock) user-service installation.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
 - `configs/window-hotkeys/` - Ctrl+Back tiler script and user service template.
 - `tests/` - simulation tests.
@@ -80,7 +81,7 @@ binding interface.
 Before deploying:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh lib/xmousepasteblock.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 python3 -m pytest tests -q
 ```
 

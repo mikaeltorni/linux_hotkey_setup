@@ -10,7 +10,7 @@
 #   - configure_workspace_number_popup_extension(): Install numbered workspace popup extension.
 #   - select_input_device(): Select a pointing device for Ctrl+Back tiling.
 #   - configure_ctrl_back_window_tiler_service(): Install Ctrl+Back window tiler service.
-#   - lock_primary_paste(): Configure xmousepasteblock when available.
+#   - lock_primary_paste(): Configure xmousepasteblock (see lib/xmousepasteblock.sh).
 #
 # Usage:
 #   source lib/hotkeys_setup.sh
@@ -142,6 +142,8 @@ source "$HOTKEYS_SETUP_LIB_DIR/gsettings_helpers.sh"
 source "$HOTKEYS_SETUP_LIB_DIR/ctrl_back_tiler.sh"
 # shellcheck source=workspace_popup.sh
 source "$HOTKEYS_SETUP_LIB_DIR/workspace_popup.sh"
+# shellcheck source=xmousepasteblock.sh
+source "$HOTKEYS_SETUP_LIB_DIR/xmousepasteblock.sh"
 
 apt_update_once() {
   if [ "$APT_UPDATED" -eq 0 ]; then
@@ -283,50 +285,6 @@ configure_automatic_window_tiling() {
   fi
 
   TARGET_USER="$TARGET_USER" bash "$installer" "$AUTOMATIC_WINDOW_TILING_BINDING"
-}
-
-build_xmousepasteblock() {
-  local bin_path="$TARGET_HOME/.local/bin/xmousepasteblock"
-  [ -x "$bin_path" ]
-}
-
-configure_xmousepasteblock_service() {
-  msg "Configuring xmousepasteblock systemd user service"
-  local bin_path="$TARGET_HOME/.local/bin/xmousepasteblock"
-  local service_file="$TARGET_HOME/.config/systemd/user/xmousepasteblock.service"
-
-  if [ ! -f "$bin_path" ]; then
-    log "info" "xmousepasteblock binary not found at $bin_path; skipping service setup."
-    return 0
-  fi
-
-  run_as_target mkdir -p "$(dirname "$service_file")"
-  run_as_target tee "$service_file" >/dev/null <<EOF
-[Unit]
-Description=xmousepasteblock - lock primary clipboard selection
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=$bin_path
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
-  reload_systemd_daemon
-  enable_systemd_service xmousepasteblock.service
-  run_as_target systemctl --user start xmousepasteblock.service || true
-}
-
-lock_primary_paste() {
-  msg "Configuring primary clipboard lock (xmousepasteblock)"
-  if build_xmousepasteblock; then
-    configure_xmousepasteblock_service || true
-  else
-    log "info" "xmousepasteblock is unavailable; primary clipboard lock service skipped."
-  fi
 }
 
 configure_ubuntu_hotkeys() {
