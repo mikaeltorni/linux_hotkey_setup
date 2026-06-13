@@ -150,6 +150,71 @@ def test_monitor_window_hotkey_assets_exist():
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
 
 
+def test_workspace_number_popup_extension_writes_expected_assets():
+    """Workspace popup setup should install assets and remove its legacy extension."""
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        old_extension_dir = (
+            home
+            / ".local"
+            / "share"
+            / "gnome-shell"
+            / "extensions"
+            / "workspace-number-popup@local"
+        )
+        old_extension_dir.mkdir(parents=True)
+        (old_extension_dir / "metadata.json").write_text(
+            '{"name": "Numbered Workspace Popup"}\n',
+            encoding="utf-8",
+        )
+
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    f"TARGET_HOME={str(home)!r}",
+                    "TARGET_USER=$(id -un)",
+                    "SESSION_TYPE=wayland",
+                    "source lib/hotkeys_setup.sh",
+                    "calls=$TARGET_HOME/workspace-popup.log",
+                    "run_as_target() { \"$@\"; }",
+                    "remove_gsettings_list() { printf 'remove %s %s %s\\n' \"$1\" \"$2\" \"$3\" >> \"$calls\"; }",
+                    "enable_shell_extension() { printf 'enable %s\\n' \"$1\" >> \"$calls\"; }",
+                    "configure_workspace_number_popup_extension",
+                ]
+            )
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        extension_dir = (
+            home
+            / ".local"
+            / "share"
+            / "gnome-shell"
+            / "extensions"
+            / "workspace-number-indicator@local"
+        )
+        metadata = json.loads(
+            (extension_dir / "metadata.json").read_text(encoding="utf-8")
+        )
+        extension = (extension_dir / "extension.js").read_text(encoding="utf-8")
+        stylesheet = (extension_dir / "stylesheet.css").read_text(encoding="utf-8")
+        calls = (home / "workspace-popup.log").read_text(encoding="utf-8")
+
+        assert metadata["uuid"] == "workspace-number-indicator@local"
+        assert metadata["shell-version"] == ["45", "46", "47", "48", "49", "50"]
+        assert "NumberedWorkspacePopupExtension" in extension
+        assert "workspace-number-popup-indicator" in stylesheet
+        assert (
+            "remove org.gnome.shell enabled-extensions "
+            "workspace-number-popup@local"
+        ) in calls
+        assert "enable workspace-number-indicator@local" in calls
+        assert not old_extension_dir.exists()
+
+
 def test_automatic_window_tiling_is_delegated_to_sibling_repository():
     """Hotkey setup should call the standalone tiler with the configured binding."""
     setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
