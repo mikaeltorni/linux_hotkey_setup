@@ -34,13 +34,14 @@ python3 -m pytest tests -q
 Run shell syntax validation:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/gsettings_helpers.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 ```
 
 ## Project Structure
 
 - `install.sh` - standalone entrypoint for applying the full hotkey setup.
 - `lib/hotkeys_setup.sh` - shared implementation used by standalone installs and delegated desktop installs.
+- `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
 - `configs/window-hotkeys/` - Ctrl+Back tiler script and user service template.
 - `tests/` - simulation tests.
@@ -77,7 +78,7 @@ binding interface.
 Before deploying:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/gsettings_helpers.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 python3 -m pytest tests -q
 ```
 

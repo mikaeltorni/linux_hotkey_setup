@@ -66,6 +66,38 @@ def test_exports_expected_hotkey_functions():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_gsettings_helpers_preserve_array_values_and_optional_keys():
+    """GSettings helpers should format arrays and skip unavailable keys."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "source lib/hotkeys_setup.sh",
+                "calls=()",
+                "user_gsettings() { calls+=(\"$*\"); }",
+                "gsettings_key_exists() { [ \"$2\" = available ]; }",
+                "set_gsettings_strv org.example bindings '<Super>A' \"quote'key\"",
+                "set_gsettings_strv_if_key_exists org.example missing '<Super>B'",
+                "set_gsettings_strv_if_key_exists org.example available '<Super>C'",
+                "set_indexed_keybinding_map org.example item- '1:<Super>X' '2:<Super>Y'",
+                "printf '%s\\n' \"${calls[@]}\"",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "set org.example bindings ['<Super>A', 'quote\\'key']",
+        "set org.example available ['<Super>C']",
+        "set org.example item-1 ['<Super>X']",
+        "set org.example item-2 ['<Super>Y']",
+    ]
+
+
 def test_workspace_and_screenshot_bindings_are_applied():
     """Workspace and screenshot helpers should emit the expected GSettings calls."""
     with tempfile.TemporaryDirectory() as td:
