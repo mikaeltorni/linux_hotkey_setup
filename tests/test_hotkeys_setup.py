@@ -215,6 +215,104 @@ def test_workspace_number_popup_extension_writes_expected_assets():
         assert not old_extension_dir.exists()
 
 
+def test_ctrl_back_device_selection_uses_first_device_non_interactively():
+    """Ctrl+Back setup should auto-select the first detected device without a TTY."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "source lib/hotkeys_setup.sh",
+                "python3() {",
+                "  printf '%s\\n' '/dev/input/by-id/first-event-mouse|First Mouse' '/dev/input/by-id/second-event-mouse|Second Mouse'",
+                "}",
+                "select_input_device",
+                "printf '%s|%s\\n' \"$SELECTED_INPUT_DEVICE\" \"$SELECTED_INPUT_DEVICE_NAME\"",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[-1] == (
+        "/dev/input/by-id/first-event-mouse|First Mouse"
+    )
+
+
+def test_ctrl_back_device_selection_fails_when_no_device_is_detected():
+    """Ctrl+Back setup should report failure when no suitable pointer exists."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "source lib/hotkeys_setup.sh",
+                "python3() { return 0; }",
+                "if select_input_device; then",
+                "  exit 1",
+                "fi",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "tiler service will be skipped" in proc.stdout
+
+
+def test_ctrl_back_service_installs_script_and_selected_device():
+    """Ctrl+Back setup should install its runtime script and configured user service."""
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        home.mkdir()
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    f"TARGET_HOME={str(home)!r}",
+                    "TARGET_USER=$(id -un)",
+                    "source lib/hotkeys_setup.sh",
+                    "calls=$TARGET_HOME/systemd.log",
+                    "SELECTED_INPUT_DEVICE=/dev/input/by-id/primary-event-mouse",
+                    "run_as_target() { \"$@\"; }",
+                    "is_root() { return 1; }",
+                    "reload_systemd_daemon() { printf 'reload\\n' >> \"$calls\"; }",
+                    "enable_systemd_service() { printf 'enable %s\\n' \"$1\" >> \"$calls\"; }",
+                    "configure_ctrl_back_window_tiler_service",
+                ]
+            )
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        script_target = home / ".local" / "bin" / "ctrl_back_tile_right.py"
+        service_target = (
+            home
+            / ".config"
+            / "systemd"
+            / "user"
+            / "ctrl-back-window-tiler.service"
+        )
+        service = service_target.read_text(encoding="utf-8")
+        calls = (home / "systemd.log").read_text(encoding="utf-8").splitlines()
+
+        assert script_target.read_bytes() == (
+            ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py"
+        ).read_bytes()
+        assert script_target.stat().st_mode & 0o111
+        assert f"ExecStart={script_target}" in service
+        assert (
+            "Environment=CTRL_BACK_TILE_DEVICE="
+            "/dev/input/by-id/primary-event-mouse"
+        ) in service
+        assert calls == ["reload", "enable ctrl-back-window-tiler.service"]
+
+
 def test_automatic_window_tiling_is_delegated_to_sibling_repository():
     """Hotkey setup should call the standalone tiler with the configured binding."""
     setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")

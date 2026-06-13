@@ -34,13 +34,14 @@ python3 -m pytest tests -q
 Run shell syntax validation:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 ```
 
 ## Project Structure
 
 - `install.sh` - standalone entrypoint for applying the full hotkey setup.
 - `lib/hotkeys_setup.sh` - shared implementation used by standalone installs and delegated desktop installs.
+- `lib/ctrl_back_tiler.sh` - pointing-device selection and Ctrl+Back user-service installation.
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
 - `lib/workspace_popup.sh` - numbered workspace popup extension installation and legacy cleanup.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
@@ -79,7 +80,7 @@ binding interface.
 Before deploying:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 python3 -m pytest tests -q
 ```
 
