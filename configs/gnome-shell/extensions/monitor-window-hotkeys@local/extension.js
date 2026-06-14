@@ -416,14 +416,19 @@ function startPointerDrag(state) {
 }
 
 /**
- * Tile the focused window to the top half of its monitor's work area.
+ * Tile the focused window to a sub-rectangle of its monitor's work area.
  *
- * No-ops when the window cannot be move/resized or the work area is degenerate.
- * Errors are logged, never thrown.
+ * Shared implementation behind the top/bottom/left/right half tilers: it
+ * resolves the focused window's monitor, asks computeRect() for the target
+ * geometry, and applies it. No-ops when the window cannot be move/resized or
+ * the computed rectangle is degenerate. Errors are logged, never thrown.
  *
+ * @param {string} label Edge name used in error messages (e.g. 'top').
+ * @param {(workArea: Meta.Rectangle) => {x: number, y: number, width: number,
+ *   height: number}} computeRect Maps the monitor work area to the target rect.
  * @returns {void}
  */
-function tileFocusedWindowTopHalf() {
+function tileFocusedWindowToRect(label, computeRect) {
   const win = getFocusWindow();
   if (!canMoveResizeWindow(win)) {
     return;
@@ -436,136 +441,7 @@ function tileFocusedWindowTopHalf() {
       ? win.get_monitor()
       : global.display.get_current_monitor();
     const workArea = win.get_work_area_for_monitor(monitorIndex);
-    const topHeight = Math.floor(workArea.height / 2);
-
-    if (topHeight <= 0 || workArea.height <= 0) {
-      return;
-    }
-
-    if (typeof win.move_to_monitor === 'function') {
-      win.move_to_monitor(monitorIndex);
-    }
-    if (typeof win.move_frame === 'function') {
-      win.move_frame(true, workArea.x, workArea.y);
-    }
-    win.move_resize_frame(true, workArea.x, workArea.y, workArea.width, topHeight);
-    raiseWindow(win);
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to tile focused window top: ${error}`);
-  }
-}
-
-/**
- * Tile the focused window to the bottom half of its monitor's work area.
- *
- * No-ops when the window cannot be move/resized or the work area is degenerate.
- * Errors are logged, never thrown.
- *
- * @returns {void}
- */
-function tileFocusedWindowBottomHalf() {
-  const win = getFocusWindow();
-  if (!canMoveResizeWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-
-    const monitorIndex = typeof win.get_monitor === 'function'
-      ? win.get_monitor()
-      : global.display.get_current_monitor();
-    const workArea = win.get_work_area_for_monitor(monitorIndex);
-    const bottomHeight = Math.floor(workArea.height / 2);
-    const y = workArea.y + Math.floor(workArea.height / 2);
-
-    if (bottomHeight <= 0 || workArea.height <= 0) {
-      return;
-    }
-
-    if (typeof win.move_to_monitor === 'function') {
-      win.move_to_monitor(monitorIndex);
-    }
-    if (typeof win.move_frame === 'function') {
-      win.move_frame(true, workArea.x, y);
-    }
-    win.move_resize_frame(true, workArea.x, y, workArea.width, bottomHeight);
-    raiseWindow(win);
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to tile focused window bottom: ${error}`);
-  }
-}
-
-/**
- * Tile the focused window to the left half of its monitor's work area.
- *
- * No-ops when the window cannot be move/resized or the work area is degenerate.
- * Errors are logged, never thrown.
- *
- * @returns {void}
- */
-function tileFocusedWindowLeftHalf() {
-  const win = getFocusWindow();
-  if (!canMoveResizeWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-
-    const monitorIndex = typeof win.get_monitor === 'function'
-      ? win.get_monitor()
-      : global.display.get_current_monitor();
-    const workArea = win.get_work_area_for_monitor(monitorIndex);
-    const leftWidth = Math.floor(workArea.width / 2);
-    const y = workArea.y;
-    const width = workArea.width - leftWidth;
-    const height = workArea.height;
-
-    if (width <= 0 || height <= 0) {
-      return;
-    }
-
-    if (typeof win.move_to_monitor === 'function') {
-      win.move_to_monitor(monitorIndex);
-    }
-    if (typeof win.move_frame === 'function') {
-      win.move_frame(true, workArea.x, y);
-    }
-    win.move_resize_frame(true, workArea.x, y, width, height);
-    raiseWindow(win);
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to tile focused window left: ${error}`);
-  }
-}
-
-/**
- * Tile the focused window to the right half of its monitor's work area.
- *
- * Also invoked over D-Bus (TileRightHalf) by the Ctrl+Back tiler service.
- * No-ops when the window cannot be move/resized or the work area is degenerate.
- * Errors are logged, never thrown.
- *
- * @returns {void}
- */
-function tileFocusedWindowRightHalf() {
-  const win = getFocusWindow();
-  if (!canMoveResizeWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-
-    const monitorIndex = typeof win.get_monitor === 'function'
-      ? win.get_monitor()
-      : global.display.get_current_monitor();
-    const workArea = win.get_work_area_for_monitor(monitorIndex);
-    const leftWidth = Math.floor(workArea.width / 2);
-    const x = workArea.x + leftWidth;
-    const y = workArea.y;
-    const width = workArea.width - leftWidth;
-    const height = workArea.height;
+    const { x, y, width, height } = computeRect(workArea);
 
     if (width <= 0 || height <= 0) {
       return;
@@ -580,8 +456,75 @@ function tileFocusedWindowRightHalf() {
     win.move_resize_frame(true, x, y, width, height);
     raiseWindow(win);
   } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to tile focused window right: ${error}`);
+    console.error(`monitor-window-hotkeys: failed to tile focused window ${label}: ${error}`);
   }
+}
+
+/**
+ * Tile the focused window to the top half of its monitor's work area.
+ *
+ * @returns {void}
+ */
+function tileFocusedWindowTopHalf() {
+  tileFocusedWindowToRect('top', (workArea) => ({
+    x: workArea.x,
+    y: workArea.y,
+    width: workArea.width,
+    height: Math.floor(workArea.height / 2),
+  }));
+}
+
+/**
+ * Tile the focused window to the bottom half of its monitor's work area.
+ *
+ * @returns {void}
+ */
+function tileFocusedWindowBottomHalf() {
+  tileFocusedWindowToRect('bottom', (workArea) => {
+    const halfHeight = Math.floor(workArea.height / 2);
+    return {
+      x: workArea.x,
+      y: workArea.y + halfHeight,
+      width: workArea.width,
+      height: halfHeight,
+    };
+  });
+}
+
+/**
+ * Tile the focused window to the left half of its monitor's work area.
+ *
+ * @returns {void}
+ */
+function tileFocusedWindowLeftHalf() {
+  tileFocusedWindowToRect('left', (workArea) => {
+    const leftWidth = Math.floor(workArea.width / 2);
+    return {
+      x: workArea.x,
+      y: workArea.y,
+      width: workArea.width - leftWidth,
+      height: workArea.height,
+    };
+  });
+}
+
+/**
+ * Tile the focused window to the right half of its monitor's work area.
+ *
+ * Also invoked over D-Bus (TileRightHalf) by the Ctrl+Back tiler service.
+ *
+ * @returns {void}
+ */
+function tileFocusedWindowRightHalf() {
+  tileFocusedWindowToRect('right', (workArea) => {
+    const leftWidth = Math.floor(workArea.width / 2);
+    return {
+      x: workArea.x + leftWidth,
+      y: workArea.y,
+      width: workArea.width - leftWidth,
+      height: workArea.height,
+    };
+  });
 }
 
 /**
