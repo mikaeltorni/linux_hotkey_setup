@@ -12,15 +12,26 @@ This is required for the Ctrl+Back mouse button right-half tiling to pick up you
 
 ## GNOME Shell reload requirements
 
-A GNOME Shell reload (`Alt+F2 r` or logout/login) is **not** needed when:
+A GNOME Shell reload (`Alt+F2 r` on X11, or logout/login) is **not** needed when:
 - Only `ctrl_back_tile_right.py` changes — it runs as a systemd user service, independent of GNOME Shell.
-- Only `apply-system-bindings.sh` changes — these are installer-side gsettings that apply on next install run.
+- Only `apply-system-bindings.sh` or other installer-side gsettings change — these apply immediately on the next install run.
 
 A reload **is** needed only if you modify the GNOME Shell extension itself:
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/extension.js`
 - Any other file inside that extension directory (schemas, metadata, etc.)
 
-In that case, either press `Alt+F2`, type `r`, and press Enter (Wayland), or log out and back in.
+In that case, on **X11** press `Alt+F2`, type `r`, and press Enter (in-place reload that preserves open windows); on **Wayland** log out and back in (no in-place reload exists).
+
+## Shift+Super+R must stay free of screen recording
+
+`<Super><Shift>r` is intentionally bound to **move-to-workspace-8**. GNOME's
+default `org.gnome.shell.keybindings show-screen-recording-ui` also uses
+`Shift+Super+R`, so the installer (`configure_screenshot_binding` in
+`lib/hotkeys_setup.sh`) clears it to `[]`. If screen recording still fires on
+that chord, the installer hasn't been applied or the shell hasn't picked up the
+change: re-run `bash install.sh`, then reload GNOME Shell (`Alt+F2 r` on X11, or
+logout/login on Wayland). Confirm with
+`gsettings get org.gnome.shell.keybindings show-screen-recording-ui` → `@as []`.
 
 ## Clean Installation Compatibility
 
