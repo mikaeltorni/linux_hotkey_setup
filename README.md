@@ -74,6 +74,7 @@ binding interface.
 
 - If the Ctrl+Back tiler cannot find a pointing device with a browser-back button, it skips the service setup.
 - If monitor/window hotkeys do not respond immediately, log out and back in so GNOME Shell loads the updated extension code.
+- If `Shift+Super+R` triggers GNOME's screen recording instead of move-to-workspace-8, the installer's unbinding of `org.gnome.shell.keybindings show-screen-recording-ui` has not taken effect yet. Re-run `bash install.sh`, then reload GNOME Shell so the freed binding is picked up: on **X11** press `Alt+F2`, type `r`, and press Enter (the same in-place reload used elsewhere in this repo); on **Wayland** log out and back in. Verify with `gsettings get org.gnome.shell.keybindings show-screen-recording-ui` returning `@as []`.
 - If GSettings schema writes fail for the local extension, run `glib-compile-schemas` on the extension `schemas/` directory and retry the installer.
 
 ## Deployment
