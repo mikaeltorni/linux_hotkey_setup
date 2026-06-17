@@ -41,37 +41,9 @@
       <default>['&lt;Control&gt;&lt;Super&gt;Right']</default>
       <summary>Tile focused window to the right half of its monitor</summary>
     </key>
-    <key name="resize-active-window-left-out" type="as">
-      <default>['&lt;Control&gt;&lt;Alt&gt;&lt;Super&gt;Q']</default>
-      <summary>Move the focused window's left edge left</summary>
-    </key>
-    <key name="resize-active-window-left-in" type="as">
-      <default>['&lt;Alt&gt;&lt;Super&gt;Q', '&lt;Control&gt;&lt;Alt&gt;&lt;Shift&gt;&lt;Super&gt;Q']</default>
-      <summary>Move the focused window's left edge right</summary>
-    </key>
-    <key name="resize-active-window-right-out" type="as">
-      <default>['&lt;Control&gt;&lt;Alt&gt;&lt;Super&gt;T']</default>
-      <summary>Move the focused window's right edge right</summary>
-    </key>
-    <key name="resize-active-window-right-in" type="as">
-      <default>['&lt;Alt&gt;&lt;Super&gt;T', '&lt;Control&gt;&lt;Alt&gt;&lt;Shift&gt;&lt;Super&gt;T']</default>
-      <summary>Move the focused window's right edge left</summary>
-    </key>
-    <key name="resize-active-window-up-out" type="as">
-      <default>['&lt;Control&gt;&lt;Alt&gt;&lt;Super&gt;A']</default>
-      <summary>Move the focused window's top edge up</summary>
-    </key>
-    <key name="resize-active-window-up-in" type="as">
-      <default>['&lt;Alt&gt;&lt;Super&gt;A', '&lt;Control&gt;&lt;Alt&gt;&lt;Shift&gt;&lt;Super&gt;A']</default>
-      <summary>Move the focused window's top edge down</summary>
-    </key>
-    <key name="resize-active-window-down-out" type="as">
-      <default>['&lt;Control&gt;&lt;Alt&gt;&lt;Super&gt;R']</default>
-      <summary>Move the focused window's bottom edge down</summary>
-    </key>
-    <key name="resize-active-window-down-in" type="as">
-      <default>['&lt;Alt&gt;&lt;Super&gt;R', '&lt;Control&gt;&lt;Alt&gt;&lt;Shift&gt;&lt;Super&gt;R']</default>
-      <summary>Move the focused window's bottom edge up</summary>
+    <key name="scale-active-window-from-center" type="as">
+      <default>['&lt;Alt&gt;&lt;Super&gt;E']</default>
+      <summary>Scale the focused window about its center by moving the pointer</summary>
     </key>
     <key name="drag-active-window-with-pointer" type="as">
       <default>['&lt;Alt&gt;&lt;Super&gt;W']</default>
