@@ -283,6 +283,26 @@ function pointerDragReleaseEvent(event) {
 }
 
 /**
+ * Test whether an event should finish an active center scale.
+ *
+ * Center scaling is keyboard-initiated (no button is held), so it ends on any
+ * mouse-button press or an Escape key press. These events are consumed by the
+ * caller so the click/keypress that finishes scaling does not also reach the
+ * underlying window.
+ *
+ * @param {Clutter.Event} event Event received from the captured-event signal.
+ * @returns {boolean} True when the scale should stop.
+ */
+function centerScaleEndEvent(event) {
+  if (event.type === Clutter.EventType.BUTTON_PRESS) {
+    return true;
+  }
+
+  return event.type === Clutter.EventType.KEY_PRESS
+    && event.get_key_symbol() === Clutter.KEY_Escape;
+}
+
+/**
  * Stop an in-progress pointer drag and settle the window in place.
  *
  * Cancels the drag timeout, clamps the window inside its work area, raises it,
@@ -425,7 +445,8 @@ function stopCenterScale(state) {
  * motion shrinks it, with both opposing edges moving symmetrically so the
  * center never shifts. The window is clamped to MIN_WINDOW_WIDTH/HEIGHT and to
  * the largest size that keeps it within the work area around that fixed center.
- * Runs until stopCenterScale(). No-ops when the focused window cannot be
+ * Runs until stopCenterScale() — triggered by pressing the chord again, any
+ * mouse-button press, or Escape. No-ops when the focused window cannot be
  * move/resized. Errors are logged.
  *
  * @param {{timeoutId: ?number, window: ?Meta.Window, centerX: number,
@@ -455,6 +476,7 @@ function startCenterScale(state) {
     const [, pointerX, pointerY] = global.get_pointer();
     state.pointerX = pointerX;
     state.pointerY = pointerY;
+    raiseWindow(win);
 
     state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
       if (!state || !state.window) {
@@ -489,7 +511,6 @@ function startCenterScale(state) {
       const y = Math.round(state.centerY - height / 2);
 
       win.move_resize_frame(true, x, y, width, height);
-      raiseWindow(win);
 
       return GLib.SOURCE_CONTINUE;
     });
@@ -674,8 +695,9 @@ export default class MonitorWindowHotkeysExtension extends Extension {
         stopPointerDrag(this._pointerDragState);
       }
 
-      if (this._centerScaleState?.timeoutId && pointerDragReleaseEvent(event)) {
+      if (this._centerScaleState?.timeoutId && centerScaleEndEvent(event)) {
         stopCenterScale(this._centerScaleState);
+        return Clutter.EVENT_STOP;
       }
 
       return Clutter.EVENT_PROPAGATE;
@@ -741,7 +763,14 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       this._settings,
       Meta.KeyBindingFlags.NONE,
       Shell.ActionMode.NORMAL,
-      () => startCenterScale(this._centerScaleState),
+      () => {
+        // Toggle: the same chord starts scaling and, while active, ends it.
+        if (this._centerScaleState?.timeoutId) {
+          stopCenterScale(this._centerScaleState);
+        } else {
+          startCenterScale(this._centerScaleState);
+        }
+      },
     );
     this._keybindings.push(CENTER_SCALE_KEY);
   }

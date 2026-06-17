@@ -63,12 +63,12 @@ Important defaults:
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
-`<Alt><Super>E` starts pointer-driven center scaling: while active, moving the
+`<Alt><Super>E` toggles pointer-driven center scaling: while active, moving the
 pointer grows or shrinks the focused window symmetrically about its center
 (rightward/downward enlarges, leftward/upward shrinks) so the window's center
-stays pinned in place. Press the primary mouse button to finish. The installer
-also clears GNOME's default `toggle-maximized` binding on that chord so the
-extension owns it.
+stays pinned in place. Finish by pressing `<Alt><Super>E` again, clicking any
+mouse button, or pressing Escape. The installer also clears GNOME's default
+`toggle-maximized` binding on that chord so the extension owns it.
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The Ctrl+Back mouse button is handled by a separate D-Bus service (ctrl_back_tile_right.py). `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 
