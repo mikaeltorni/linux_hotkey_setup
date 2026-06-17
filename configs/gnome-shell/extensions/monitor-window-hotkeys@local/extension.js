@@ -37,11 +37,6 @@ const POINTER_POLL_INTERVAL_MS = 8;
 const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 
-// Pointer travel (px) along an axis maps to this many px of window growth on
-// that axis. Both edges move oppositely, so the window grows by 2x this per
-// pointer pixel while its center stays pinned.
-const CENTER_SCALE_SENSITIVITY = 2;
-
 const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
 const CENTER_SCALE_KEY = 'scale-active-window-from-center';
 const DBUS_BUS_NAME = 'org.gnome.shell.extensions.MonitorWindowHotkeys';
@@ -440,18 +435,20 @@ function stopCenterScale(state) {
  * Begin scaling the focused window about its center with the pointer.
  *
  * Pins the window center in place, then installs a periodic timeout
- * (POINTER_POLL_INTERVAL_MS) that grows or shrinks the window as the pointer
- * moves: rightward/downward pointer motion enlarges the window, leftward/upward
- * motion shrinks it, with both opposing edges moving symmetrically so the
- * center never shifts. The window is clamped to MIN_WINDOW_WIDTH/HEIGHT and to
- * the largest size that keeps it within the work area around that fixed center.
- * Runs until stopCenterScale() — triggered by pressing the chord again, any
- * mouse-button press, or Escape. No-ops when the focused window cannot be
+ * (POINTER_POLL_INTERVAL_MS) that resizes the window to track the live pointer
+ * position on both axes: the pointer is treated as a corner handle whose mirror
+ * image about the fixed center is the opposite corner, so the window's half
+ * width follows |pointerX - centerX| and its half height follows
+ * |pointerY - centerY|. Moving the pointer away from the center grows the
+ * window, moving it toward the center shrinks it, on both axes independently and
+ * simultaneously. The size is clamped to MIN_WINDOW_WIDTH/HEIGHT and to the
+ * largest extent that keeps the window inside the work area around that fixed
+ * center. Runs until stopCenterScale() — triggered by pressing the chord again,
+ * any mouse-button press, or Escape. No-ops when the focused window cannot be
  * move/resized. Errors are logged.
  *
  * @param {{timeoutId: ?number, window: ?Meta.Window, centerX: number,
- *   centerY: number, startWidth: number, startHeight: number,
- *   pointerX: number, pointerY: number}} state Center scale state to populate.
+ *   centerY: number}} state Center scale state to populate.
  * @returns {void}
  */
 function startCenterScale(state) {
@@ -471,11 +468,6 @@ function startCenterScale(state) {
     state.window = win;
     state.centerX = frame.x + frame.width / 2;
     state.centerY = frame.y + frame.height / 2;
-    state.startWidth = frame.width;
-    state.startHeight = frame.height;
-    const [, pointerX, pointerY] = global.get_pointer();
-    state.pointerX = pointerX;
-    state.pointerY = pointerY;
     raiseWindow(win);
 
     state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
@@ -490,22 +482,22 @@ function startCenterScale(state) {
       }
 
       const [, pointerX, pointerY] = global.get_pointer();
-      const deltaX = pointerX - state.pointerX;
-      const deltaY = pointerY - state.pointerY;
+
+      // The pointer is one corner; its mirror about the fixed center is the
+      // opposite corner. The window therefore spans twice the pointer's
+      // distance from the center on each axis, keeping the center pinned.
+      let width = 2 * Math.abs(pointerX - state.centerX);
+      let height = 2 * Math.abs(pointerY - state.centerY);
 
       // Largest half-size that keeps the window inside the work area while its
       // center stays fixed, so growing never nudges the pinned center.
       const maxHalfWidth = Math.min(state.centerX - workArea.x, workArea.x + workArea.width - state.centerX);
       const maxHalfHeight = Math.min(state.centerY - workArea.y, workArea.y + workArea.height - state.centerY);
-      const maxWidth = Math.max(MIN_WINDOW_WIDTH, Math.floor(2 * maxHalfWidth));
-      const maxHeight = Math.max(MIN_WINDOW_HEIGHT, Math.floor(2 * maxHalfHeight));
+      const maxWidth = Math.max(MIN_WINDOW_WIDTH, 2 * maxHalfWidth);
+      const maxHeight = Math.max(MIN_WINDOW_HEIGHT, 2 * maxHalfHeight);
 
-      const width = Math.round(
-        Math.max(MIN_WINDOW_WIDTH, Math.min(state.startWidth + CENTER_SCALE_SENSITIVITY * deltaX, maxWidth)),
-      );
-      const height = Math.round(
-        Math.max(MIN_WINDOW_HEIGHT, Math.min(state.startHeight + CENTER_SCALE_SENSITIVITY * deltaY, maxHeight)),
-      );
+      width = Math.round(Math.max(MIN_WINDOW_WIDTH, Math.min(width, maxWidth)));
+      height = Math.round(Math.max(MIN_WINDOW_HEIGHT, Math.min(height, maxHeight)));
 
       const x = Math.round(state.centerX - width / 2);
       const y = Math.round(state.centerY - height / 2);
@@ -659,10 +651,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       window: null,
       centerX: 0,
       centerY: 0,
-      startWidth: 0,
-      startHeight: 0,
-      pointerX: 0,
-      pointerY: 0,
     };
 
     const dbusImplementation = {
