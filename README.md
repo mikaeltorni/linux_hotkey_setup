@@ -10,7 +10,7 @@ It owns screenshot shortcuts, numbered workspace switching and moving, Albert la
 
 - Bash installer for GNOME GSettings, GNOME Shell extension installation, and systemd user-service setup.
 - Python `evdev` helper logic inside the setup module for pointer-device detection.
-- A local GNOME Shell extension for monitor/window movement, resizing, pointer drag, and tiling shortcuts.
+- A local GNOME Shell extension for monitor/window movement, pointer-driven center scaling, pointer drag, and tiling shortcuts.
 - Pytest-compatible Python tests that simulate shell behavior without modifying host settings.
 
 ## Installation
@@ -62,6 +62,13 @@ Important defaults:
 - `AUTOMATIC_WINDOW_TILING_BINDING=<Super>t`
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
+
+`<Alt><Super>E` starts pointer-driven center scaling: while active, moving the
+pointer grows or shrinks the focused window symmetrically about its center
+(rightward/downward enlarges, leftward/upward shrinks) so the window's center
+stays pinned in place. Press the primary mouse button to finish. The installer
+also clears GNOME's default `toggle-maximized` binding on that chord so the
+extension owns it.
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The Ctrl+Back mouse button is handled by a separate D-Bus service (ctrl_back_tile_right.py). `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 

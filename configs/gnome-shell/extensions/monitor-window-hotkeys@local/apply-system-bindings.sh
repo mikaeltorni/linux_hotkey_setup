@@ -9,15 +9,14 @@ WM_SCHEMA="org.gnome.desktop.wm.keybindings"
 TILING_SCHEMA="org.gnome.shell.extensions.tiling-assistant"
 WM_MOUSE_BUTTON_MODIFIER="<Super>"
 
-WM_BINDINGS=(
-  "toggle-maximized:<Alt><Super>E"
-)
+WM_BINDINGS=()
 
 WM_UNBINDINGS=(
   "minimize:<Alt><Super>R"
   "maximize:<Super>Up"
   "unmaximize:<Super>Down"
   "minimize:<Super>Down"
+  "toggle-maximized:<Alt><Super>E"
 )
 
 TILING_UNBINDINGS=(

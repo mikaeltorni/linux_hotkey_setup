@@ -2,16 +2,18 @@
  * extension.js — Monitor & Window Hotkeys GNOME Shell extension.
  *
  * Provides keyboard shortcuts (and a D-Bus API) to move the focused window
- * between monitors, tile it to screen halves, resize it edge-by-edge, and drag
- * it with the pointer. The D-Bus interface (TileRightHalf, …) lets the
- * companion Ctrl+Back tiler systemd service trigger tiling without keybindings.
+ * between monitors, tile it to screen halves, scale it about its center with
+ * the pointer, and drag it with the pointer. The D-Bus interface
+ * (TileRightHalf, …) lets the companion Ctrl+Back tiler systemd service trigger
+ * tiling without keybindings.
  *
  * Components:
  *   - getFocusWindow(): Resolve the focused, user-manageable window.
  *   - moveFocusedWindowToMonitor(): Move the focused window between monitors.
- *   - resizeFocusedWindow(): Resize the focused window along one edge.
  *   - tileFocusedWindow{Top,Bottom,Left,Right}Half(): Half-screen tiling.
  *   - startPointerDrag()/stopPointerDrag(): Pointer-driven window dragging.
+ *   - startCenterScale()/stopCenterScale(): Pointer-driven scaling about the
+ *     window center, keeping the center pinned in place.
  *   - MonitorWindowHotkeysExtension: Extension lifecycle (enable/disable).
  */
 import Shell from 'gi://Shell';
@@ -31,23 +33,17 @@ const MONITOR_KEYBINDINGS = [
   { name: 'move-active-window-to-monitor-6', monitor: 5 },
 ];
 
-const RESIZE_STEP = 40;
-const POINTER_DRAG_INTERVAL_MS = 8;
+const POINTER_POLL_INTERVAL_MS = 8;
 const MIN_WINDOW_WIDTH = 160;
 const MIN_WINDOW_HEIGHT = 120;
 
-const RESIZE_KEYBINDINGS = [
-  { name: 'resize-active-window-left-out', edge: 'left', direction: -1 },
-  { name: 'resize-active-window-left-in', edge: 'left', direction: 1 },
-  { name: 'resize-active-window-right-out', edge: 'right', direction: 1 },
-  { name: 'resize-active-window-right-in', edge: 'right', direction: -1 },
-  { name: 'resize-active-window-up-out', edge: 'top', direction: -1 },
-  { name: 'resize-active-window-up-in', edge: 'top', direction: 1 },
-  { name: 'resize-active-window-down-out', edge: 'bottom', direction: 1 },
-  { name: 'resize-active-window-down-in', edge: 'bottom', direction: -1 },
-];
+// Pointer travel (px) along an axis maps to this many px of window growth on
+// that axis. Both edges move oppositely, so the window grows by 2x this per
+// pointer pixel while its center stays pinned.
+const CENTER_SCALE_SENSITIVITY = 2;
 
 const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
+const CENTER_SCALE_KEY = 'scale-active-window-from-center';
 const DBUS_BUS_NAME = 'org.gnome.shell.extensions.MonitorWindowHotkeys';
 const DBUS_OBJECT_PATH = '/org/gnome/shell/extensions/monitor_window_hotkeys';
 
@@ -272,75 +268,6 @@ function getWindowWorkArea(win) {
 }
 
 /**
- * Resize the focused window by one RESIZE_STEP along a single edge.
- *
- * The opposite edge stays anchored; the moving edge is clamped to the work
- * area and to MIN_WINDOW_WIDTH/MIN_WINDOW_HEIGHT. Errors are logged, never
- * thrown.
- *
- * @param {('left'|'right'|'top'|'bottom')} edge Edge to move.
- * @param {number} direction -1 to shrink toward / +1 to grow away from the edge.
- * @returns {void}
- */
-function resizeFocusedWindow(edge, direction) {
-  const win = getFocusWindow();
-  if (!canMoveResizeWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-
-    const frame = win.get_frame_rect();
-    const workArea = getWindowWorkArea(win);
-    if (!workArea) {
-      return;
-    }
-    let x = frame.x;
-    let y = frame.y;
-    let width = frame.width;
-    let height = frame.height;
-    const delta = direction * RESIZE_STEP;
-
-    switch (edge) {
-    case 'left': {
-      const newX = Math.max(workArea.x, Math.min(x + delta, x + width - MIN_WINDOW_WIDTH));
-      width += x - newX;
-      x = newX;
-      break;
-    }
-    case 'right': {
-      const right = Math.max(x + MIN_WINDOW_WIDTH, Math.min(x + width + delta, workArea.x + workArea.width));
-      width = right - x;
-      break;
-    }
-    case 'top': {
-      const newY = Math.max(workArea.y, Math.min(y + delta, y + height - MIN_WINDOW_HEIGHT));
-      height += y - newY;
-      y = newY;
-      break;
-    }
-    case 'bottom': {
-      const bottom = Math.max(y + MIN_WINDOW_HEIGHT, Math.min(y + height + delta, workArea.y + workArea.height));
-      height = bottom - y;
-      break;
-    }
-    default:
-      return;
-    }
-
-    if (width <= 0 || height <= 0) {
-      return;
-    }
-
-    win.move_resize_frame(true, x, y, width, height);
-    raiseWindow(win);
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to resize focused window: ${error}`);
-  }
-}
-
-/**
  * Test whether an event signals the end of a pointer drag.
  *
  * @param {Clutter.Event} event Event received from the captured-event signal.
@@ -404,7 +331,7 @@ function stopPointerDrag(state) {
  * Begin dragging the focused window with the pointer.
  *
  * Records the pointer-to-frame offset and installs a periodic timeout
- * (POINTER_DRAG_INTERVAL_MS) that follows the pointer until stopPointerDrag()
+ * (POINTER_POLL_INTERVAL_MS) that follows the pointer until stopPointerDrag()
  * runs. No-ops when the focused window cannot be moved. Errors are logged.
  *
  * @param {{timeoutId: ?number, window: ?Meta.Window, pointerX: number,
@@ -430,7 +357,7 @@ function startPointerDrag(state) {
     state.pointerY = pointerY - frame.y;
 
     // Start a timeout to handle the drag.
-    state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_DRAG_INTERVAL_MS, () => {
+    state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
       if (!state || !state.window) {
         return GLib.SOURCE_REMOVE;
       }
@@ -455,6 +382,119 @@ function startPointerDrag(state) {
     });
   } catch (error) {
     console.error(`monitor-window-hotkeys: failed to start pointer drag: ${error}`);
+  }
+}
+
+/**
+ * Stop an in-progress center scale and settle the window in place.
+ *
+ * Cancels the scale timeout, raises the window, and clears the scale state.
+ * Safe to call when no scale is active.
+ *
+ * @param {{timeoutId: ?number, window: ?Meta.Window}} state Center scale state.
+ * @returns {void}
+ */
+function stopCenterScale(state) {
+  if (!state) {
+    return;
+  }
+
+  if (state.timeoutId) {
+    GLib.source_remove(state.timeoutId);
+    state.timeoutId = null;
+  }
+
+  const win = state.window;
+  if (win) {
+    try {
+      raiseWindow(win);
+    } catch (error) {
+      console.error(`monitor-window-hotkeys: failed to stop center scale: ${error}`);
+    }
+  }
+
+  state.window = null;
+}
+
+/**
+ * Begin scaling the focused window about its center with the pointer.
+ *
+ * Pins the window center in place, then installs a periodic timeout
+ * (POINTER_POLL_INTERVAL_MS) that grows or shrinks the window as the pointer
+ * moves: rightward/downward pointer motion enlarges the window, leftward/upward
+ * motion shrinks it, with both opposing edges moving symmetrically so the
+ * center never shifts. The window is clamped to MIN_WINDOW_WIDTH/HEIGHT and to
+ * the largest size that keeps it within the work area around that fixed center.
+ * Runs until stopCenterScale(). No-ops when the focused window cannot be
+ * move/resized. Errors are logged.
+ *
+ * @param {{timeoutId: ?number, window: ?Meta.Window, centerX: number,
+ *   centerY: number, startWidth: number, startHeight: number,
+ *   pointerX: number, pointerY: number}} state Center scale state to populate.
+ * @returns {void}
+ */
+function startCenterScale(state) {
+  if (!state) {
+    return;
+  }
+
+  const win = getFocusWindow();
+  if (!canMoveResizeWindow(win)) {
+    return;
+  }
+
+  try {
+    prepareWindowForMoveResize(win);
+
+    const frame = win.get_frame_rect();
+    state.window = win;
+    state.centerX = frame.x + frame.width / 2;
+    state.centerY = frame.y + frame.height / 2;
+    state.startWidth = frame.width;
+    state.startHeight = frame.height;
+    const [, pointerX, pointerY] = global.get_pointer();
+    state.pointerX = pointerX;
+    state.pointerY = pointerY;
+
+    state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
+      if (!state || !state.window) {
+        return GLib.SOURCE_REMOVE;
+      }
+
+      const win = state.window;
+      const workArea = getWindowWorkArea(win);
+      if (!workArea) {
+        return GLib.SOURCE_CONTINUE;
+      }
+
+      const [, pointerX, pointerY] = global.get_pointer();
+      const deltaX = pointerX - state.pointerX;
+      const deltaY = pointerY - state.pointerY;
+
+      // Largest half-size that keeps the window inside the work area while its
+      // center stays fixed, so growing never nudges the pinned center.
+      const maxHalfWidth = Math.min(state.centerX - workArea.x, workArea.x + workArea.width - state.centerX);
+      const maxHalfHeight = Math.min(state.centerY - workArea.y, workArea.y + workArea.height - state.centerY);
+      const maxWidth = Math.max(MIN_WINDOW_WIDTH, Math.floor(2 * maxHalfWidth));
+      const maxHeight = Math.max(MIN_WINDOW_HEIGHT, Math.floor(2 * maxHalfHeight));
+
+      const width = Math.round(
+        Math.max(MIN_WINDOW_WIDTH, Math.min(state.startWidth + CENTER_SCALE_SENSITIVITY * deltaX, maxWidth)),
+      );
+      const height = Math.round(
+        Math.max(MIN_WINDOW_HEIGHT, Math.min(state.startHeight + CENTER_SCALE_SENSITIVITY * deltaY, maxHeight)),
+      );
+
+      const x = Math.round(state.centerX - width / 2);
+      const y = Math.round(state.centerY - height / 2);
+
+      win.move_resize_frame(true, x, y, width, height);
+      raiseWindow(win);
+
+      return GLib.SOURCE_CONTINUE;
+    });
+  } catch (error) {
+    console.error(`monitor-window-hotkeys: failed to start center scale: ${error}`);
   }
 }
 
@@ -593,6 +633,16 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       pointerX: 0,
       pointerY: 0,
     };
+    this._centerScaleState = {
+      timeoutId: null,
+      window: null,
+      centerX: 0,
+      centerY: 0,
+      startWidth: 0,
+      startHeight: 0,
+      pointerX: 0,
+      pointerY: 0,
+    };
 
     const dbusImplementation = {
       TileRightHalf: tileFocusedWindowRightHalf,
@@ -622,6 +672,10 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     this._capturedEventId = global.stage.connect('captured-event', (actor, event) => {
       if (this._pointerDragState?.timeoutId && pointerDragReleaseEvent(event)) {
         stopPointerDrag(this._pointerDragState);
+      }
+
+      if (this._centerScaleState?.timeoutId && pointerDragReleaseEvent(event)) {
+        stopCenterScale(this._centerScaleState);
       }
 
       return Clutter.EVENT_PROPAGATE;
@@ -673,17 +727,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     );
     this._keybindings.push('tile-left-half');
 
-    for (const binding of RESIZE_KEYBINDINGS) {
-      Main.wm.addKeybinding(
-        binding.name,
-        this._settings,
-        Meta.KeyBindingFlags.NONE,
-        Shell.ActionMode.NORMAL,
-        () => resizeFocusedWindow(binding.edge, binding.direction),
-      );
-      this._keybindings.push(binding.name);
-    }
-
     Main.wm.addKeybinding(
       POINTER_DRAG_KEY,
       this._settings,
@@ -693,6 +736,14 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     );
     this._keybindings.push(POINTER_DRAG_KEY);
 
+    Main.wm.addKeybinding(
+      CENTER_SCALE_KEY,
+      this._settings,
+      Meta.KeyBindingFlags.NONE,
+      Shell.ActionMode.NORMAL,
+      () => startCenterScale(this._centerScaleState),
+    );
+    this._keybindings.push(CENTER_SCALE_KEY);
   }
 
   /**
@@ -715,6 +766,11 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     if (this._pointerDragState) {
       stopPointerDrag(this._pointerDragState);
       this._pointerDragState = null;
+    }
+
+    if (this._centerScaleState) {
+      stopCenterScale(this._centerScaleState);
+      this._centerScaleState = null;
     }
 
     if (this._capturedEventId) {
