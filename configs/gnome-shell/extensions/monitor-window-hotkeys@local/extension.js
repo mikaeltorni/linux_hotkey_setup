@@ -224,15 +224,49 @@ function raiseWindow(win) {
 }
 
 /**
+ * Resolve a valid monitor index for a window.
+ *
+ * Mutter aborts the entire shell (assertion `which_monitor >= 0` in
+ * meta_window_get_work_area_for_monitor) when get_work_area_for_monitor() or
+ * move_to_monitor() is called with -1. win.get_monitor() returns -1 while a
+ * window is transiently off all monitors, e.g. mid workspace-switch animation.
+ * Because that abort is at the C level it cannot be caught with try/catch, so
+ * every monitor lookup must be clamped to a usable index here. Falls back to
+ * the current monitor and finally returns -1 when no monitor is available, so
+ * callers can bail out instead of crashing the shell.
+ *
+ * @param {Meta.Window} win Window whose monitor is requested.
+ * @returns {number} A valid zero-based monitor index, or -1 when none exists.
+ */
+function resolveWindowMonitor(win) {
+  const monitorCount = global.display.get_n_monitors();
+  if (monitorCount <= 0) {
+    return -1;
+  }
+
+  let index = typeof win.get_monitor === 'function' ? win.get_monitor() : -1;
+  if (index < 0 || index >= monitorCount) {
+    index = global.display.get_current_monitor();
+  }
+  if (index < 0 || index >= monitorCount) {
+    return -1;
+  }
+
+  return index;
+}
+
+/**
  * Get the usable work area (excluding panels) for a window's monitor.
  *
  * @param {Meta.Window} win Window whose monitor work area is requested.
- * @returns {Meta.Rectangle} The work area rectangle for that monitor.
+ * @returns {Meta.Rectangle|null} The work area rectangle for that monitor, or
+ *   null when the window is not on any valid monitor.
  */
 function getWindowWorkArea(win) {
-  const monitorIndex = typeof win.get_monitor === 'function'
-    ? win.get_monitor()
-    : global.display.get_current_monitor();
+  const monitorIndex = resolveWindowMonitor(win);
+  if (monitorIndex < 0) {
+    return null;
+  }
 
   return win.get_work_area_for_monitor(monitorIndex);
 }
@@ -259,6 +293,9 @@ function resizeFocusedWindow(edge, direction) {
 
     const frame = win.get_frame_rect();
     const workArea = getWindowWorkArea(win);
+    if (!workArea) {
+      return;
+    }
     let x = frame.x;
     let y = frame.y;
     let width = frame.width;
@@ -345,6 +382,9 @@ function stopPointerDrag(state) {
   try {
     prepareWindowForMoveResize(win);
     const workArea = getWindowWorkArea(win);
+    if (!workArea) {
+      return;
+    }
     const frame = win.get_frame_rect();
 
     // Clamp to work area.
@@ -402,6 +442,9 @@ function startPointerDrag(state) {
 
       // Clamp to work area.
       const workArea = getWindowWorkArea(win);
+      if (!workArea) {
+        return GLib.SOURCE_CONTINUE;
+      }
       newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - win.get_frame_rect().width));
       newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - win.get_frame_rect().height));
 
@@ -437,9 +480,10 @@ function tileFocusedWindowToRect(label, computeRect) {
   try {
     prepareWindowForMoveResize(win);
 
-    const monitorIndex = typeof win.get_monitor === 'function'
-      ? win.get_monitor()
-      : global.display.get_current_monitor();
+    const monitorIndex = resolveWindowMonitor(win);
+    if (monitorIndex < 0) {
+      return;
+    }
     const workArea = win.get_work_area_for_monitor(monitorIndex);
     const { x, y, width, height } = computeRect(workArea);
 
