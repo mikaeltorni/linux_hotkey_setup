@@ -351,15 +351,25 @@ function stopPointerDrag(state) {
  * Begin dragging the focused window with the pointer.
  *
  * Records the pointer-to-frame offset and installs a periodic timeout
- * (POINTER_POLL_INTERVAL_MS) that follows the pointer until stopPointerDrag()
- * runs. No-ops when the focused window cannot be moved. Errors are logged.
+ * (POINTER_POLL_INTERVAL_MS) that follows the pointer. The drag is held: it
+ * ends as soon as Super is released (mirroring center scaling), and also via
+ * stopPointerDrag() on a left-button release. No-ops when a drag is already
+ * active or the focused window cannot be moved. Errors are logged.
  *
  * @param {{timeoutId: ?number, window: ?Meta.Window, pointerX: number,
- *   pointerY: number}} state Pointer drag state to populate.
+ *   pointerY: number, armed: boolean}} state Pointer drag state to populate.
  * @returns {void}
  */
 function startPointerDrag(state) {
   if (!state) {
+    return;
+  }
+
+  // Never stack a second drag on top of a live one. Re-entry (e.g. spamming
+  // the chord) would orphan the previous timeout — it keeps running because
+  // state.window is still set — and every leaked 8ms source calls move_frame()
+  // + raiseWindow(), piling up until the shell is overwhelmed and crashes.
+  if (state.timeoutId) {
     return;
   }
 
@@ -375,6 +385,9 @@ function startPointerDrag(state) {
     const frame = win.get_frame_rect();
     state.pointerX = pointerX - frame.x;
     state.pointerY = pointerY - frame.y;
+    // Only auto-stop on Super release once Super has actually been seen held,
+    // so the chord settling on the first poll cannot end the drag instantly.
+    state.armed = false;
 
     // Start a timeout to handle the drag.
     state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
@@ -383,7 +396,23 @@ function startPointerDrag(state) {
       }
 
       const win = state.window;
-      const [pointerX, pointerY] = global.get_pointer();
+      const [pointerX, pointerY, mods] = global.get_pointer();
+
+      // The drag is "while held": end the moment the Super key is let go (after
+      // it has been seen held). Without this the window keeps tracking the
+      // pointer forever, since the only other exit is a left-button release.
+      const superHeld = (mods & SUPER_HELD_MASK) !== 0;
+      if (superHeld) {
+        state.armed = true;
+      } else if (state.armed) {
+        // Clear without source_remove(): returning SOURCE_REMOVE removes this
+        // very source, so removing it here too would double-free.
+        state.timeoutId = null;
+        state.window = null;
+        raiseWindow(win);
+        return GLib.SOURCE_REMOVE;
+      }
+
       let newX = pointerX - state.pointerX;
       let newY = pointerY - state.pointerY;
 
@@ -691,6 +720,7 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       window: null,
       pointerX: 0,
       pointerY: 0,
+      armed: false,
     };
     this._centerScaleState = {
       timeoutId: null,
@@ -789,7 +819,14 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       this._settings,
       Meta.KeyBindingFlags.NONE,
       Shell.ActionMode.NORMAL,
-      () => startPointerDrag(this._pointerDragState),
+      () => {
+        // Hold-to-drag: start on press; releasing Super (or a left-button
+        // click) ends it. Ignore re-triggers while already active so spamming
+        // the chord cannot stack timeouts and overwhelm the shell.
+        if (!this._pointerDragState?.timeoutId) {
+          startPointerDrag(this._pointerDragState);
+        }
+      },
     );
     this._keybindings.push(POINTER_DRAG_KEY);
 
