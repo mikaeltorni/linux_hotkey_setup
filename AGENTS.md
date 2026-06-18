@@ -20,7 +20,10 @@ A reload **is** needed only if you modify the GNOME Shell extension itself:
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/extension.js`
 - Any other file inside that extension directory (schemas, metadata, etc.)
 
-In that case, on **X11** press `Alt+F2`, type `r`, and press Enter (in-place reload that preserves open windows); on **Wayland** log out and back in (no in-place reload exists).
+When a reload is required, follow the `linux-configuration` skill — the single
+source of truth for GNOME reload safety: X11 in-place `Alt+F2 r`, or
+logout/login on Wayland. Never `gnome-shell --replace`, log the user out, or
+kill the Shell to force the change through.
 
 ## Shift+Super+R must stay free of screen recording
 
@@ -28,9 +31,9 @@ In that case, on **X11** press `Alt+F2`, type `r`, and press Enter (in-place rel
 default `org.gnome.shell.keybindings show-screen-recording-ui` also uses
 `Shift+Super+R`, so the installer (`configure_screenshot_binding` in
 `lib/hotkeys_setup.sh`) clears it to `[]`. If screen recording still fires on
-that chord, the installer hasn't been applied or the shell hasn't picked up the
-change: re-run `bash install.sh`, then reload GNOME Shell (`Alt+F2 r` on X11, or
-logout/login on Wayland). Confirm with
+that chord, the installer hasn't been applied: re-run `bash install.sh`. This
+is a `gsettings` keybinding change, so GNOME Shell picks it up live — no Shell
+reload is needed. Confirm with
 `gsettings get org.gnome.shell.keybindings show-screen-recording-ui` → `@as []`.
 
 ## Clean Installation Compatibility
