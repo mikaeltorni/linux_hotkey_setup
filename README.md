@@ -123,6 +123,37 @@ This repository is **Phase 3** in the desktop setup chain:
 
 It is automatically cloned and run by the main installer (`installation_scripts/install.sh`).
 
+## Component selection
+
+This repository's `install.sh` participates in the shared installer
+component menu (see the [`installation_scripts`](https://github.com/mikaeltorni/installation_scripts)
+master installer). Run standalone, it offers an interactive submenu on a
+terminal; the master installer drives it non-interactively.
+
+```bash
+bash install.sh                 # interactive component selection (TTY), else defaults
+bash install.sh --default       # install all default-on components, no prompts
+bash install.sh --all           # install every component, no prompts
+bash install.sh --select a,b    # install exactly these component ids
+bash install.sh --list-components  # print: id<TAB>label<TAB>default
+```
+
+In the interactive menu, **space** toggles a component, `a`/`n` select all
+or none, and **Enter** installs the selection. Components:
+
+| Component id | Description | Default |
+|---|---|---|
+| `screenshot` | Screenshot shortcuts | on |
+| `workspace_keys` | Numbered workspace switch/move keys | on |
+| `albert` | Albert launcher bindings | on |
+| `monitor_window_hotkeys` | Monitor/window movement hotkeys extension | on |
+| `automatic_window_tiling` | Automatic same-app window tiling (<Super>t) | on |
+| `hotkey_window_tools` | Pointer-driven window move/resize hotkeys | on |
+| `ctrl_back_tiler` | Ctrl+Back window tiler service | on |
+| `workspace_popup` | Numbered workspace popup extension | on |
+| `primary_paste_block` | Block middle-click primary paste | on |
+
+
 ## Disclaimer
 
 This software is provided under the MIT License on an **“as is”** basis, without warranties of any kind. To the maximum extent permitted by applicable law, the authors and copyright holders shall not be liable for any claims, damages, losses, or other liability arising from the use of this software.
