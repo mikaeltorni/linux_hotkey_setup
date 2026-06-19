@@ -16,7 +16,6 @@ WM_UNBINDINGS=(
   "maximize:<Super>Up"
   "unmaximize:<Super>Down"
   "minimize:<Super>Down"
-  "toggle-maximized:<Alt><Super>E"
 )
 
 TILING_UNBINDINGS=(

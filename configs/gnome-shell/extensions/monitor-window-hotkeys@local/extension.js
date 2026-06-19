@@ -2,18 +2,18 @@
  * extension.js — Monitor & Window Hotkeys GNOME Shell extension.
  *
  * Provides keyboard shortcuts (and a D-Bus API) to move the focused window
- * between monitors, tile it to screen halves, scale it about its center with
- * the pointer, and drag it with the pointer. The D-Bus interface
- * (TileRightHalf, …) lets the companion Ctrl+Back tiler systemd service trigger
- * tiling without keybindings.
+ * between monitors, tile it to screen halves, and drag it with the pointer. The
+ * D-Bus interface (TileRightHalf, …) lets the companion Ctrl+Back tiler systemd
+ * service trigger tiling without keybindings.
+ *
+ * Pointer-driven scaling about the window center has moved to the standalone
+ * linux_hotkey_window_tools repository (window-move-resize@local).
  *
  * Components:
  *   - getFocusWindow(): Resolve the focused, user-manageable window.
  *   - moveFocusedWindowToMonitor(): Move the focused window between monitors.
  *   - tileFocusedWindow{Top,Bottom,Left,Right}Half(): Half-screen tiling.
  *   - startPointerDrag()/stopPointerDrag(): Pointer-driven window dragging.
- *   - startCenterScale()/stopCenterScale(): Pointer-driven scaling about the
- *     window center, keeping the center pinned in place.
  *   - MonitorWindowHotkeysExtension: Extension lifecycle (enable/disable).
  */
 import Shell from 'gi://Shell';
@@ -34,16 +34,13 @@ const MONITOR_KEYBINDINGS = [
 ];
 
 const POINTER_POLL_INTERVAL_MS = 8;
-const MIN_WINDOW_WIDTH = 160;
-const MIN_WINDOW_HEIGHT = 120;
 
 // Modifier bits that mean the Super key is held. X11 reports Super as Mod4;
-// some layouts also set the dedicated Super bit, so accept either. Center
-// scaling stays active only while Super is held (the <Super> in <Alt><Super>E).
+// some layouts also set the dedicated Super bit, so accept either. The pointer
+// drag stays active only while Super is held (the <Super> in <Alt><Super>W).
 const SUPER_HELD_MASK = Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK;
 
 const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
-const CENTER_SCALE_KEY = 'scale-active-window-from-center';
 const DBUS_BUS_NAME = 'org.gnome.shell.extensions.MonitorWindowHotkeys';
 const DBUS_OBJECT_PATH = '/org/gnome/shell/extensions/monitor_window_hotkeys';
 
@@ -283,26 +280,6 @@ function pointerDragReleaseEvent(event) {
 }
 
 /**
- * Test whether an event should finish an active center scale.
- *
- * Center scaling is keyboard-initiated (no button is held), so it ends on any
- * mouse-button press or an Escape key press. These events are consumed by the
- * caller so the click/keypress that finishes scaling does not also reach the
- * underlying window.
- *
- * @param {Clutter.Event} event Event received from the captured-event signal.
- * @returns {boolean} True when the scale should stop.
- */
-function centerScaleEndEvent(event) {
-  if (event.type === Clutter.EventType.BUTTON_PRESS) {
-    return true;
-  }
-
-  return event.type === Clutter.EventType.KEY_PRESS
-    && event.get_key_symbol() === Clutter.KEY_Escape;
-}
-
-/**
  * Stop an in-progress pointer drag and settle the window in place.
  *
  * Cancels the drag timeout, clamps the window inside its work area, raises it,
@@ -431,158 +408,6 @@ function startPointerDrag(state) {
     });
   } catch (error) {
     console.error(`monitor-window-hotkeys: failed to start pointer drag: ${error}`);
-  }
-}
-
-/**
- * Warp the pointer to an absolute screen position.
- *
- * Used to recenter the pointer on the window before center scaling so the
- * scale tracks the pointer's offset from that center. No-ops (logging only)
- * when the backend does not expose a warpable seat.
- *
- * @param {number} x Absolute X coordinate to move the pointer to.
- * @param {number} y Absolute Y coordinate to move the pointer to.
- * @returns {void}
- */
-function warpPointer(x, y) {
-  try {
-    const seat = global.backend?.get_default_seat?.();
-    if (seat && typeof seat.warp_pointer === 'function') {
-      seat.warp_pointer(x, y);
-    }
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to warp pointer: ${error}`);
-  }
-}
-
-/**
- * Stop an in-progress center scale and settle the window in place.
- *
- * Cancels the scale timeout, raises the window, and clears the scale state.
- * Safe to call when no scale is active.
- *
- * @param {{timeoutId: ?number, window: ?Meta.Window}} state Center scale state.
- * @returns {void}
- */
-function stopCenterScale(state) {
-  if (!state) {
-    return;
-  }
-
-  if (state.timeoutId) {
-    GLib.source_remove(state.timeoutId);
-    state.timeoutId = null;
-  }
-
-  const win = state.window;
-  if (win) {
-    try {
-      raiseWindow(win);
-    } catch (error) {
-      console.error(`monitor-window-hotkeys: failed to stop center scale: ${error}`);
-    }
-  }
-
-  state.window = null;
-}
-
-/**
- * Begin scaling the focused window about its center with the pointer.
- *
- * Warps the pointer to the window's center and pins that center in place, then
- * installs a periodic timeout (POINTER_POLL_INTERVAL_MS) that resizes the
- * window to track the pointer's offset from that center on both axes: the
- * window's half width follows |pointerX - centerX| and its half height follows
- * |pointerY - centerY|. Because the pointer starts at the center, the window
- * begins at its minimum size and grows as the pointer moves outward, shrinks as
- * it moves back, on both axes independently and simultaneously. The size is
- * clamped to MIN_WINDOW_WIDTH/HEIGHT and to the largest extent that keeps the
- * window inside the work area around that fixed center.
- *
- * Scaling stays active only while Super is held (the chord is held down) and
- * ends as soon as Super is released; it also ends via stopCenterScale() on a
- * mouse-button press or Escape. No-ops when the focused window cannot be
- * move/resized. Errors are logged.
- *
- * @param {{timeoutId: ?number, window: ?Meta.Window, centerX: number,
- *   centerY: number, armed: boolean}} state Center scale state to populate.
- * @returns {void}
- */
-function startCenterScale(state) {
-  if (!state) {
-    return;
-  }
-
-  const win = getFocusWindow();
-  if (!canMoveResizeWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-
-    const frame = win.get_frame_rect();
-    state.window = win;
-    state.centerX = Math.round(frame.x + frame.width / 2);
-    state.centerY = Math.round(frame.y + frame.height / 2);
-    // Only stop on Super release once we have actually seen Super held, so the
-    // chord settling on the first poll cannot end scaling immediately.
-    state.armed = false;
-    raiseWindow(win);
-    warpPointer(state.centerX, state.centerY);
-
-    state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
-      if (!state || !state.window) {
-        return GLib.SOURCE_REMOVE;
-      }
-
-      const win = state.window;
-      const workArea = getWindowWorkArea(win);
-      if (!workArea) {
-        return GLib.SOURCE_CONTINUE;
-      }
-
-      const [pointerX, pointerY, mods] = global.get_pointer();
-
-      // End the moment the held Super key is let go (after it has been seen).
-      const superHeld = (mods & SUPER_HELD_MASK) !== 0;
-      if (superHeld) {
-        state.armed = true;
-      } else if (state.armed) {
-        // Clear without source_remove(): returning SOURCE_REMOVE removes this
-        // very source, so removing it here too would double-free.
-        state.timeoutId = null;
-        state.window = null;
-        raiseWindow(win);
-        return GLib.SOURCE_REMOVE;
-      }
-
-      // The window spans twice the pointer's offset from the pinned center on
-      // each axis, so moving the pointer outward grows it and moving it back
-      // shrinks it, horizontally and vertically at once.
-      let width = 2 * Math.abs(pointerX - state.centerX);
-      let height = 2 * Math.abs(pointerY - state.centerY);
-
-      // Largest half-size that keeps the window inside the work area while its
-      // center stays fixed, so growing never nudges the pinned center.
-      const maxHalfWidth = Math.min(state.centerX - workArea.x, workArea.x + workArea.width - state.centerX);
-      const maxHalfHeight = Math.min(state.centerY - workArea.y, workArea.y + workArea.height - state.centerY);
-      const maxWidth = Math.max(MIN_WINDOW_WIDTH, 2 * maxHalfWidth);
-      const maxHeight = Math.max(MIN_WINDOW_HEIGHT, 2 * maxHalfHeight);
-
-      width = Math.round(Math.max(MIN_WINDOW_WIDTH, Math.min(width, maxWidth)));
-      height = Math.round(Math.max(MIN_WINDOW_HEIGHT, Math.min(height, maxHeight)));
-
-      const x = Math.round(state.centerX - width / 2);
-      const y = Math.round(state.centerY - height / 2);
-
-      win.move_resize_frame(true, x, y, width, height);
-
-      return GLib.SOURCE_CONTINUE;
-    });
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to start center scale: ${error}`);
   }
 }
 
@@ -722,13 +547,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       pointerY: 0,
       armed: false,
     };
-    this._centerScaleState = {
-      timeoutId: null,
-      window: null,
-      centerX: 0,
-      centerY: 0,
-      armed: false,
-    };
 
     const dbusImplementation = {
       TileRightHalf: tileFocusedWindowRightHalf,
@@ -758,11 +576,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     this._capturedEventId = global.stage.connect('captured-event', (actor, event) => {
       if (this._pointerDragState?.timeoutId && pointerDragReleaseEvent(event)) {
         stopPointerDrag(this._pointerDragState);
-      }
-
-      if (this._centerScaleState?.timeoutId && centerScaleEndEvent(event)) {
-        stopCenterScale(this._centerScaleState);
-        return Clutter.EVENT_STOP;
       }
 
       return Clutter.EVENT_PROPAGATE;
@@ -829,21 +642,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       },
     );
     this._keybindings.push(POINTER_DRAG_KEY);
-
-    Main.wm.addKeybinding(
-      CENTER_SCALE_KEY,
-      this._settings,
-      Meta.KeyBindingFlags.NONE,
-      Shell.ActionMode.NORMAL,
-      () => {
-        // Hold-to-scale: start on press; releasing Super (or Escape / a mouse
-        // click) ends it. Ignore re-triggers while already active.
-        if (!this._centerScaleState?.timeoutId) {
-          startCenterScale(this._centerScaleState);
-        }
-      },
-    );
-    this._keybindings.push(CENTER_SCALE_KEY);
   }
 
   /**
@@ -866,11 +664,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     if (this._pointerDragState) {
       stopPointerDrag(this._pointerDragState);
       this._pointerDragState = null;
-    }
-
-    if (this._centerScaleState) {
-      stopCenterScale(this._centerScaleState);
-      this._centerScaleState = null;
     }
 
     if (this._capturedEventId) {

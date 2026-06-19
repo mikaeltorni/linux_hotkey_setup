@@ -10,7 +10,7 @@ It owns screenshot shortcuts, numbered workspace switching and moving, Albert la
 
 - Bash installer for GNOME GSettings, GNOME Shell extension installation, and systemd user-service setup.
 - Python `evdev` helper logic inside the setup module for pointer-device detection.
-- A local GNOME Shell extension for monitor/window movement, pointer-driven center scaling, pointer drag, and tiling shortcuts.
+- A local GNOME Shell extension for monitor/window movement, pointer drag, and tiling shortcuts.
 - Pytest-compatible Python tests that simulate shell behavior without modifying host settings.
 
 ## Installation
@@ -63,15 +63,8 @@ Important defaults:
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
-Hold `<Alt><Super>E` for pointer-driven center scaling: on press the pointer
-warps to the center of the focused window and that center is pinned. The window
-then spans twice the pointer's offset from the center on each axis, so moving
-the pointer outward enlarges the window and moving it back toward the center
-shrinks it — tracking the mouse horizontally and vertically at the same time.
-Scaling stays active while Super is held and finishes the moment you release
-it; clicking any mouse button or pressing Escape also ends it. The installer
-clears GNOME's default `toggle-maximized` binding on that chord so the
-extension owns it.
+Pointer-driven window resizing (`<Alt><Super>E` center scaling) now lives in
+the standalone `linux_hotkey_window_tools` repository.
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The Ctrl+Back mouse button is handled by a separate D-Bus service (ctrl_back_tile_right.py). `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 
