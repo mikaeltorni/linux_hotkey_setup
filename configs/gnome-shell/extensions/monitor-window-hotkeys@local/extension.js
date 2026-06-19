@@ -2,24 +2,21 @@
  * extension.js — Monitor & Window Hotkeys GNOME Shell extension.
  *
  * Provides keyboard shortcuts (and a D-Bus API) to move the focused window
- * between monitors, tile it to screen halves, and drag it with the pointer. The
- * D-Bus interface (TileRightHalf, …) lets the companion Ctrl+Back tiler systemd
- * service trigger tiling without keybindings.
+ * between monitors and tile it to screen halves. The D-Bus interface
+ * (TileRightHalf, …) lets the companion Ctrl+Back tiler systemd service trigger
+ * tiling without keybindings.
  *
- * Pointer-driven scaling about the window center has moved to the standalone
- * linux_hotkey_window_tools repository (window-move-resize@local).
+ * Pointer-driven window move (drag) and resize (center scale) have moved to the
+ * standalone linux_hotkey_window_tools repository (window-move-resize@local).
  *
  * Components:
  *   - getFocusWindow(): Resolve the focused, user-manageable window.
  *   - moveFocusedWindowToMonitor(): Move the focused window between monitors.
  *   - tileFocusedWindow{Top,Bottom,Left,Right}Half(): Half-screen tiling.
- *   - startPointerDrag()/stopPointerDrag(): Pointer-driven window dragging.
  *   - MonitorWindowHotkeysExtension: Extension lifecycle (enable/disable).
  */
 import Shell from 'gi://Shell';
 import Meta from 'gi://Meta';
-import GLib from 'gi://GLib';
-import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -33,14 +30,6 @@ const MONITOR_KEYBINDINGS = [
   { name: 'move-active-window-to-monitor-6', monitor: 5 },
 ];
 
-const POINTER_POLL_INTERVAL_MS = 8;
-
-// Modifier bits that mean the Super key is held. X11 reports Super as Mod4;
-// some layouts also set the dedicated Super bit, so accept either. The pointer
-// drag stays active only while Super is held (the <Super> in <Alt><Super>W).
-const SUPER_HELD_MASK = Clutter.ModifierType.MOD4_MASK | Clutter.ModifierType.SUPER_MASK;
-
-const POINTER_DRAG_KEY = 'drag-active-window-with-pointer';
 const DBUS_BUS_NAME = 'org.gnome.shell.extensions.MonitorWindowHotkeys';
 const DBUS_OBJECT_PATH = '/org/gnome/shell/extensions/monitor_window_hotkeys';
 
@@ -159,25 +148,6 @@ function canMoveResizeWindow(win) {
 }
 
 /**
- * Report whether a window can be moved (without requiring resize support).
- *
- * @param {Meta.Window|null} win Candidate window.
- * @returns {boolean} True when the window supports move_frame and any available
- *   allows_move() check passes.
- */
-function canMoveWindow(win) {
-  if (!win || typeof win.move_frame !== 'function') {
-    return false;
-  }
-
-  if (typeof win.allows_move === 'function' && !win.allows_move()) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Normalize a window's state so it can be freely positioned/resized.
  *
  * Clears maximized, fullscreen, minimized, and always-on-top states when the
@@ -262,153 +232,6 @@ function getWindowWorkArea(win) {
   }
 
   return win.get_work_area_for_monitor(monitorIndex);
-}
-
-/**
- * Test whether an event signals the end of a pointer drag.
- *
- * @param {Clutter.Event} event Event received from the captured-event signal.
- * @returns {boolean} True for a primary (left) mouse button release.
- */
-function pointerDragReleaseEvent(event) {
-  if (event.type !== Clutter.EventType.BUTTON_RELEASE) {
-    return false;
-  }
-
-  const button = event.get_button();
-  return button === 1;
-}
-
-/**
- * Stop an in-progress pointer drag and settle the window in place.
- *
- * Cancels the drag timeout, clamps the window inside its work area, raises it,
- * and clears the drag state. Safe to call when no drag is active.
- *
- * @param {{timeoutId: ?number, window: ?Meta.Window}} state Pointer drag state.
- * @returns {void}
- */
-function stopPointerDrag(state) {
-  if (!state) {
-    return;
-  }
-
-  if (state.timeoutId) {
-    GLib.source_remove(state.timeoutId);
-    state.timeoutId = null;
-  }
-
-  const win = state.window;
-  if (!win) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-    const workArea = getWindowWorkArea(win);
-    if (!workArea) {
-      return;
-    }
-    const frame = win.get_frame_rect();
-
-    // Clamp to work area.
-    let x = Math.max(workArea.x, Math.min(frame.x, workArea.x + workArea.width - frame.width));
-    let y = Math.max(workArea.y, Math.min(frame.y, workArea.y + workArea.height - frame.height));
-
-    win.move_frame(true, x, y);
-    raiseWindow(win);
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to stop pointer drag: ${error}`);
-  }
-
-  state.window = null;
-}
-
-/**
- * Begin dragging the focused window with the pointer.
- *
- * Records the pointer-to-frame offset and installs a periodic timeout
- * (POINTER_POLL_INTERVAL_MS) that follows the pointer. The drag is held: it
- * ends as soon as Super is released (mirroring center scaling), and also via
- * stopPointerDrag() on a left-button release. No-ops when a drag is already
- * active or the focused window cannot be moved. Errors are logged.
- *
- * @param {{timeoutId: ?number, window: ?Meta.Window, pointerX: number,
- *   pointerY: number, armed: boolean}} state Pointer drag state to populate.
- * @returns {void}
- */
-function startPointerDrag(state) {
-  if (!state) {
-    return;
-  }
-
-  // Never stack a second drag on top of a live one. Re-entry (e.g. spamming
-  // the chord) would orphan the previous timeout — it keeps running because
-  // state.window is still set — and every leaked 8ms source calls move_frame()
-  // + raiseWindow(), piling up until the shell is overwhelmed and crashes.
-  if (state.timeoutId) {
-    return;
-  }
-
-  const win = getFocusWindow();
-  if (!canMoveWindow(win)) {
-    return;
-  }
-
-  try {
-    prepareWindowForMoveResize(win);
-    state.window = win;
-    const [pointerX, pointerY] = global.get_pointer();
-    const frame = win.get_frame_rect();
-    state.pointerX = pointerX - frame.x;
-    state.pointerY = pointerY - frame.y;
-    // Only auto-stop on Super release once Super has actually been seen held,
-    // so the chord settling on the first poll cannot end the drag instantly.
-    state.armed = false;
-
-    // Start a timeout to handle the drag.
-    state.timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POINTER_POLL_INTERVAL_MS, () => {
-      if (!state || !state.window) {
-        return GLib.SOURCE_REMOVE;
-      }
-
-      const win = state.window;
-      const [pointerX, pointerY, mods] = global.get_pointer();
-
-      // The drag is "while held": end the moment the Super key is let go (after
-      // it has been seen held). Without this the window keeps tracking the
-      // pointer forever, since the only other exit is a left-button release.
-      const superHeld = (mods & SUPER_HELD_MASK) !== 0;
-      if (superHeld) {
-        state.armed = true;
-      } else if (state.armed) {
-        // Clear without source_remove(): returning SOURCE_REMOVE removes this
-        // very source, so removing it here too would double-free.
-        state.timeoutId = null;
-        state.window = null;
-        raiseWindow(win);
-        return GLib.SOURCE_REMOVE;
-      }
-
-      let newX = pointerX - state.pointerX;
-      let newY = pointerY - state.pointerY;
-
-      // Clamp to work area.
-      const workArea = getWindowWorkArea(win);
-      if (!workArea) {
-        return GLib.SOURCE_CONTINUE;
-      }
-      newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - win.get_frame_rect().width));
-      newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - win.get_frame_rect().height));
-
-      win.move_frame(true, newX, newY);
-      raiseWindow(win);
-
-      return GLib.SOURCE_CONTINUE;
-    });
-  } catch (error) {
-    console.error(`monitor-window-hotkeys: failed to start pointer drag: ${error}`);
-  }
 }
 
 /**
@@ -527,26 +350,19 @@ function tileFocusedWindowRightHalf() {
 /**
  * GNOME Shell extension entry point for monitor/window hotkeys.
  *
- * On enable() it exports the D-Bus tiling interface, registers every keybinding
- * defined in the extension schema, and listens for pointer-drag releases. On
- * disable() it tears all of that down so the extension can be cleanly reloaded.
+ * On enable() it exports the D-Bus tiling interface and registers every
+ * keybinding defined in the extension schema. On disable() it tears all of that
+ * down so the extension can be cleanly reloaded.
  */
 export default class MonitorWindowHotkeysExtension extends Extension {
   /**
-   * Export the D-Bus interface and register all keybindings and listeners.
+   * Export the D-Bus interface and register all keybindings.
    *
    * @returns {void}
    */
   enable() {
     this._settings = this.getSettings();
     this._keybindings = [];
-    this._pointerDragState = {
-      timeoutId: null,
-      window: null,
-      pointerX: 0,
-      pointerY: 0,
-      armed: false,
-    };
 
     const dbusImplementation = {
       TileRightHalf: tileFocusedWindowRightHalf,
@@ -572,14 +388,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       null,
       null,
     );
-
-    this._capturedEventId = global.stage.connect('captured-event', (actor, event) => {
-      if (this._pointerDragState?.timeoutId && pointerDragReleaseEvent(event)) {
-        stopPointerDrag(this._pointerDragState);
-      }
-
-      return Clutter.EVENT_PROPAGATE;
-    });
 
     for (const binding of MONITOR_KEYBINDINGS) {
       Main.wm.addKeybinding(
@@ -626,27 +434,11 @@ export default class MonitorWindowHotkeysExtension extends Extension {
       () => tileFocusedWindowLeftHalf(),
     );
     this._keybindings.push('tile-left-half');
-
-    Main.wm.addKeybinding(
-      POINTER_DRAG_KEY,
-      this._settings,
-      Meta.KeyBindingFlags.NONE,
-      Shell.ActionMode.NORMAL,
-      () => {
-        // Hold-to-drag: start on press; releasing Super (or a left-button
-        // click) ends it. Ignore re-triggers while already active so spamming
-        // the chord cannot stack timeouts and overwhelm the shell.
-        if (!this._pointerDragState?.timeoutId) {
-          startPointerDrag(this._pointerDragState);
-        }
-      },
-    );
-    this._keybindings.push(POINTER_DRAG_KEY);
   }
 
   /**
-   * Unregister keybindings, listeners, and the D-Bus interface, releasing all
-   * resources acquired in enable().
+   * Unregister keybindings and the D-Bus interface, releasing all resources
+   * acquired in enable().
    *
    * @returns {void}
    */
@@ -659,16 +451,6 @@ export default class MonitorWindowHotkeysExtension extends Extension {
     if (this._dbusObject) {
       this._dbusObject.unexport();
       this._dbusObject = null;
-    }
-
-    if (this._pointerDragState) {
-      stopPointerDrag(this._pointerDragState);
-      this._pointerDragState = null;
-    }
-
-    if (this._capturedEventId) {
-      global.stage.disconnect(this._capturedEventId);
-      this._capturedEventId = null;
     }
 
     if (this._keybindings) {

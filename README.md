@@ -4,13 +4,13 @@
 
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
-It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository.
+It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository, and pointer-driven window move/resize hotkeys are delegated to the sibling `linux_hotkey_window_tools` repository (installed by default).
 
 ## Technology Stack
 
 - Bash installer for GNOME GSettings, GNOME Shell extension installation, and systemd user-service setup.
 - Python `evdev` helper logic inside the setup module for pointer-device detection.
-- A local GNOME Shell extension for monitor/window movement, pointer drag, and tiling shortcuts.
+- A local GNOME Shell extension for monitor/window movement and tiling shortcuts.
 - Pytest-compatible Python tests that simulate shell behavior without modifying host settings.
 
 ## Installation
@@ -60,11 +60,13 @@ Important defaults:
 - `MONITOR_WINDOW_HOTKEYS_EXTENSION_ID=monitor-window-hotkeys@local`
 - `AUTOMATIC_WINDOW_TILING_DIR=../linux_automatic_window_tiling`
 - `AUTOMATIC_WINDOW_TILING_BINDING=<Super>t`
+- `HOTKEY_WINDOW_TOOLS_DIR=../linux_hotkey_window_tools`
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
-Pointer-driven window resizing (`<Alt><Super>E` center scaling) now lives in
-the standalone `linux_hotkey_window_tools` repository.
+Pointer-driven window move (`<Alt><Super>W` drag) and resize (`<Alt><Super>E`
+center scaling) now live in the standalone `linux_hotkey_window_tools`
+repository, which this installer runs by default (see below).
 
 Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The Ctrl+Back mouse button is handled by a separate D-Bus service (ctrl_back_tile_right.py). `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 
@@ -72,6 +74,13 @@ When `linux_automatic_window_tiling` exists beside this repository, the
 installer calls its parameterized installer with `<Super>t`. The standalone
 repository owns the extension, tiling behavior, schema, and general-purpose
 binding interface.
+
+Likewise, when `linux_hotkey_window_tools` exists beside this repository, the
+installer runs its `install.sh` by default to provide the pointer-driven window
+move (`<Alt><Super>W`) and resize (`<Alt><Super>E`) hotkeys. That standalone
+repository owns its own `window-move-resize@local` extension and schema and can
+also be installed on its own. The delegation is skipped on X11 and when the
+repository is absent.
 
 ## Troubleshooting
 

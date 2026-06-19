@@ -7,6 +7,7 @@
 #   - configure_albert_keybindings(): Bind Albert launcher shortcuts.
 #   - configure_monitor_window_hotkeys_extension(): Install monitor/window GNOME Shell hotkeys.
 #   - configure_automatic_window_tiling(): Delegate automatic tiling installation.
+#   - configure_hotkey_window_tools(): Delegate window move/resize hotkey install.
 #   - configure_workspace_number_popup_extension(): Install numbered workspace popup extension.
 #   - select_input_device(): Select a pointing device for Ctrl+Back tiling.
 #   - configure_ctrl_back_window_tiler_service(): Install Ctrl+Back window tiler service.
@@ -37,6 +38,7 @@ HOTKEYS_SETUP_CONFIG_DIR="$HOTKEYS_SETUP_DIR/configs"
 : "${MONITOR_WINDOW_HOTKEYS_SOURCE_DIR:=$HOTKEYS_SETUP_CONFIG_DIR/gnome-shell/extensions/$MONITOR_WINDOW_HOTKEYS_EXTENSION_ID}"
 : "${AUTOMATIC_WINDOW_TILING_DIR:=$HOTKEYS_SETUP_DIR/../linux_automatic_window_tiling}"
 : "${AUTOMATIC_WINDOW_TILING_BINDING:=<Super>t}"
+: "${HOTKEY_WINDOW_TOOLS_DIR:=$HOTKEYS_SETUP_DIR/../linux_hotkey_window_tools}"
 
 SCREENSHOT_UI_BINDINGS=("${SCREENSHOT_UI_BINDINGS[@]:-<Shift><Super>s}")
 SCREENSHOT_QUICK_BINDINGS=("${SCREENSHOT_QUICK_BINDINGS[@]:-Print}")
@@ -287,6 +289,29 @@ configure_automatic_window_tiling() {
   TARGET_USER="$TARGET_USER" bash "$installer" "$AUTOMATIC_WINDOW_TILING_BINDING"
 }
 
+# configure_hotkey_window_tools — Install the pointer-driven window move/resize
+# hotkeys by delegating to the sibling linux_hotkey_window_tools repository. The
+# <Alt><Super>W move and <Alt><Super>E resize features used to live in the local
+# monitor-window-hotkeys extension and now ship from that standalone repo, which
+# can also be installed on its own. Skipped on X11 (like the local extension)
+# and when the repository is absent.
+configure_hotkey_window_tools() {
+  msg "Configuring pointer-driven window move/resize hotkeys"
+
+  if [[ "$SESSION_TYPE" =~ ^(x11|xorg)$ ]]; then
+    msg "X11 session detected; skipping window move/resize hotkeys extension."
+    return 0
+  fi
+
+  local installer="$HOTKEY_WINDOW_TOOLS_DIR/install.sh"
+  if [[ ! -f "$installer" ]]; then
+    msg "Window move/resize tools repository not found at $HOTKEY_WINDOW_TOOLS_DIR; skipping."
+    return 0
+  fi
+
+  TARGET_USER="$TARGET_USER" bash "$installer"
+}
+
 configure_ubuntu_hotkeys() {
   msg "Applying Ubuntu hotkey setup"
   select_input_device || true
@@ -296,6 +321,7 @@ configure_ubuntu_hotkeys() {
   audit_keybindings
   configure_monitor_window_hotkeys_extension
   configure_automatic_window_tiling
+  configure_hotkey_window_tools
   configure_ctrl_back_window_tiler_service
   configure_workspace_number_popup_extension
   lock_primary_paste
