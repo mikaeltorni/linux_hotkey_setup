@@ -6,6 +6,25 @@ Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop insta
 
 It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository, and pointer-driven window move/resize hotkeys are delegated to the sibling `linux_hotkey_window_tools` repository (installed by default).
 
+## Repository dependencies
+
+This repository installs and runs **standalone**; sibling repositories only
+enhance it and never block installation when absent.
+
+- **Build-time (soft):** the shared installer component framework
+  [`linux_installation_scripts_functions`](https://github.com/mikaeltorni/linux_installation_scripts_functions) —
+  loaded from a sibling checkout when present, otherwise downloaded on demand.
+- **Delegated installs (optional):** when they sit beside it, this installer
+  also installs
+  [`linux_automatic_window_tiling`](https://github.com/mikaeltorni/linux_automatic_window_tiling)
+  (automatic same-application tiling, with the chosen accelerator) and
+  [`linux_hotkey_window_tools`](https://github.com/mikaeltorni/linux_hotkey_window_tools)
+  (pointer-driven move/resize, installed by default). If either checkout is
+  missing, that feature is skipped — the rest of the hotkey setup still installs.
+
+See the full cross-repository map in
+[installation_scripts/DEPENDENCIES.md](https://github.com/mikaeltorni/installation_scripts/blob/master/DEPENDENCIES.md).
+
 ## Technology Stack
 
 - Bash installer for GNOME GSettings, GNOME Shell extension installation, and systemd user-service setup.
