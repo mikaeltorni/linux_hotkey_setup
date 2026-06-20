@@ -5,6 +5,11 @@
 # and the installer helpers msg(), run_as_target(), is_root(),
 # reload_systemd_daemon(), and enable_systemd_service().
 
+# select_input_device — Detect pointing devices that expose a back button and
+# choose one for the Ctrl+Back tiler. Prompts interactively; auto-selects the
+# first device in non-interactive runs. Exports SELECTED_INPUT_DEVICE and
+# SELECTED_INPUT_DEVICE_NAME. Takes no arguments. Returns non-zero when no
+# eligible device is found so the caller can skip the tiler service.
 select_input_device() {
   msg "Detecting pointing devices with back buttons"
   local device_list
@@ -87,6 +92,11 @@ for path, name in devices:
   msg "No valid selection; using first detected: $SELECTED_INPUT_DEVICE_NAME"
 }
 
+# configure_ctrl_back_window_tiler_service — Install the ctrl_back_tile_right.py
+# script and its systemd --user unit, pinning the unit to the device chosen by
+# select_input_device (via CTRL_BACK_TILE_DEVICE), then enable and start it.
+# Skipped when the source files are missing. Takes no arguments; reads
+# SELECTED_INPUT_DEVICE and HOTKEYS_SETUP_CONFIG_DIR.
 configure_ctrl_back_window_tiler_service() {
   msg "Installing Ctrl + browser-back window tiler service"
   local script_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl_back_tile_right.py"

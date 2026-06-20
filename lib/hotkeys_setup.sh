@@ -82,14 +82,20 @@ if [ "${#SUPER_ARROW_MOVE_BINDINGS[@]}" -eq 1 ]; then
   )
 fi
 
+# msg — Print a highlighted progress banner to stdout.
+# Args: $* — message text to display after the "==> " prefix.
 msg() {
   printf '\n==> %s\n' "$*"
 }
 
+# log — Print a level-tagged diagnostic line to stderr.
+# Args: $1 — log level label (e.g. info, warn); $2 — message text.
 log() {
   printf '[%s] %s\n' "$1" "$2" >&2
 }
 
+# need_cmd — Return success when the named command is on PATH.
+# Args: $1 — command name to probe.
 need_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -116,6 +122,11 @@ report_sudo_required() {
   msg "Apply them with: sudo bash install.sh"
 }
 
+# run_as_target — Run a command as TARGET_USER with that user's graphical
+# session environment (HOME, XDG_RUNTIME_DIR, DBUS, DISPLAY) so gsettings and
+# systemctl --user reach the live session. Runs directly when already the target
+# user, otherwise via `sudo -u`.
+# Args: $@ — command and arguments to execute.
 run_as_target() {
   if [ "$(id -un)" = "$TARGET_USER" ]; then
     env \
@@ -147,6 +158,8 @@ source "$HOTKEYS_SETUP_LIB_DIR/workspace_popup.sh"
 # shellcheck source=xmousepasteblock.sh
 source "$HOTKEYS_SETUP_LIB_DIR/xmousepasteblock.sh"
 
+# apt_update_once — Refresh the apt cache the first time only (idempotent across
+# multiple apt_install calls in one run via the APT_UPDATED guard).
 apt_update_once() {
   if [ "$APT_UPDATED" -eq 0 ]; then
     msg "Updating apt cache"
@@ -155,6 +168,9 @@ apt_update_once() {
   fi
 }
 
+# apt_install — Install any of the named packages that are not already present.
+# Skips and records a sudo-required note when run without root.
+# Args: $@ — apt package names to ensure are installed.
 apt_install() {
   local missing=() pkg
   for pkg in "$@"; do
@@ -169,10 +185,16 @@ apt_install() {
   DEBIAN_FRONTEND=noninteractive apt install -y "${missing[@]}"
 }
 
+# reload_systemd_daemon — Reload the target user's systemd manager so newly
+# written unit files are picked up. Failures are tolerated (|| true).
 reload_systemd_daemon() {
   run_as_target systemctl --user daemon-reload || true
 }
 
+# enable_systemd_service — Reload, enable, and start a systemd --user unit for
+# the target user. Each step tolerates failure so a missing session does not
+# abort the installer.
+# Args: $1 — service unit name (e.g. ctrl-back-window-tiler.service).
 enable_systemd_service() {
   local service_name="$1"
   run_as_target systemctl --user daemon-reload || true
@@ -180,6 +202,10 @@ enable_systemd_service() {
   run_as_target systemctl --user start "$service_name" || true
 }
 
+# configure_screenshot_binding — Bind Shift+Super+S to the screenshot UI and
+# Print to a quick screenshot, leave screen recording (Shift+Super+R) unbound so
+# it cannot shadow move-to-workspace-8, and clear the legacy custom screenshot
+# keybinding. Takes no arguments; reads the SCREENSHOT_*_BINDINGS arrays.
 configure_screenshot_binding() {
   msg "Binding Shift+Super+S to screenshot UI and Print to quick screenshot"
   local old_custom_screenshot_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-screenshot/"
@@ -196,6 +222,10 @@ configure_screenshot_binding() {
   user_gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$old_custom_screenshot_path" binding "''" || true
 }
 
+# configure_workspace_keys — Switch to a fixed WORKSPACE_COUNT of static
+# workspaces and bind the numbered switch/move keys, Super+Shift arrow moves, and
+# overview toggle. Takes no arguments; reads WORKSPACE_COUNT and the
+# WORKSPACE_SWITCH/MOVE, SUPER_ARROW_MOVE, and OVERVIEW binding arrays.
 configure_workspace_keys() {
   msg "Applying workspace and UI keybindings"
   user_gsettings set org.gnome.mutter dynamic-workspaces false
@@ -220,6 +250,8 @@ configure_workspace_keys() {
   user_gsettings set org.gnome.shell.window-switcher current-workspace-only true
 }
 
+# configure_albert_keybindings — Register a GNOME custom keybinding that toggles
+# the Albert launcher with the 'aring' (Å) key. Takes no arguments.
 configure_albert_keybindings() {
   msg "Configuring Albert launcher keybindings"
   local path_aring="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/albert-aring/"
@@ -229,12 +261,19 @@ configure_albert_keybindings() {
   user_gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$path_aring" binding "'aring'"
 }
 
+# audit_keybindings — Print the currently applied overview/switch/screenshot
+# keybindings for visual verification after configuration. Takes no arguments.
 audit_keybindings() {
   msg "Audit: grep selected keybindings"
   run_as_target bash -lc "gsettings list-recursively | grep -E '<Super>Tab|switch-group|switch-applications' || true"
   run_as_target bash -lc "gsettings list-recursively | grep '<Super>s' || true"
 }
 
+# configure_monitor_window_hotkeys_extension — Install the local monitor/window
+# GNOME Shell extension into the target user's extensions directory, compile its
+# schema, apply its system bindings, and enable it. Skipped on X11 and when the
+# source directory is absent. Takes no arguments; reads
+# MONITOR_WINDOW_HOTKEYS_EXTENSION_ID and MONITOR_WINDOW_HOTKEYS_SOURCE_DIR.
 configure_monitor_window_hotkeys_extension() {
   msg "Installing local GNOME Shell monitor/window hotkeys"
 
@@ -277,6 +316,10 @@ configure_monitor_window_hotkeys_extension() {
   msg "Monitor/window hotkeys extension installed. Log out and back in before testing GNOME Shell extension changes."
 }
 
+# configure_automatic_window_tiling — Delegate to the sibling
+# linux_automatic_window_tiling repository's installer, passing the configured
+# tiling binding. Skipped when that repository is absent. Takes no arguments;
+# reads AUTOMATIC_WINDOW_TILING_DIR and AUTOMATIC_WINDOW_TILING_BINDING.
 configure_automatic_window_tiling() {
   msg "Configuring automatic window tiling"
   local installer="$AUTOMATIC_WINDOW_TILING_DIR/install.sh"
@@ -310,19 +353,4 @@ configure_hotkey_window_tools() {
   fi
 
   TARGET_USER="$TARGET_USER" bash "$installer"
-}
-
-configure_ubuntu_hotkeys() {
-  msg "Applying Ubuntu hotkey setup"
-  select_input_device || true
-  configure_screenshot_binding
-  configure_workspace_keys
-  configure_albert_keybindings
-  audit_keybindings
-  configure_monitor_window_hotkeys_extension
-  configure_automatic_window_tiling
-  configure_hotkey_window_tools
-  configure_ctrl_back_window_tiler_service
-  configure_workspace_number_popup_extension
-  lock_primary_paste
 }

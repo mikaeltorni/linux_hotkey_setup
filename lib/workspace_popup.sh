@@ -4,6 +4,10 @@
 # The caller must provide SESSION_TYPE, TARGET_HOME, and the installer helpers
 # msg(), run_as_target(), remove_gsettings_list(), and enable_shell_extension().
 
+# configure_workspace_number_popup_extension — Install the numbered workspace
+# popup GNOME Shell extension (metadata, extension.js, stylesheet) into the
+# target user's extensions directory, migrate away the old popup UUID, and enable
+# it. Skipped on X11. Takes no arguments.
 configure_workspace_number_popup_extension() {
   msg "Installing local GNOME Shell numbered workspace popup"
 

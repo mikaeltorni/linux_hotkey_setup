@@ -58,7 +58,8 @@ def test_exports_expected_hotkey_functions():
                 "source lib/hotkeys_setup.sh",
                 "declare -F configure_screenshot_binding configure_workspace_keys configure_albert_keybindings >/dev/null",
                 "declare -F configure_monitor_window_hotkeys_extension configure_automatic_window_tiling configure_workspace_number_popup_extension >/dev/null",
-                "declare -F select_input_device configure_ctrl_back_window_tiler_service lock_primary_paste configure_ubuntu_hotkeys >/dev/null",
+                "declare -F configure_hotkey_window_tools configure_ctrl_back_window_tiler_service >/dev/null",
+                "declare -F select_input_device lock_primary_paste >/dev/null",
             ]
         )
     )
