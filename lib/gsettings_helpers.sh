@@ -40,64 +40,17 @@ set_gsettings_strv_if_key_exists() {
 }
 
 append_gsettings_list() {
-  local schema="$1" key="$2" value="$3"
-  run_as_target env SCHEMA="$schema" KEY="$key" VALUE="$value" python3 - <<'PY'
-import ast
-import os
-import subprocess
-import sys
-
-schema = os.environ["SCHEMA"]
-key = os.environ["KEY"]
-value = os.environ["VALUE"]
-current = subprocess.run(
-    ["gsettings", "get", schema, key],
-    text=True,
-    capture_output=True,
-    check=False,
-).stdout.strip()
-if current.startswith("@as "):
-    current = current[4:].strip()
-try:
-    values = ast.literal_eval(current) if current else []
-except Exception:
-    values = []
-if value not in values:
-    values.append(value)
-new_value = "[" + ", ".join(repr(v) for v in values) + "]"
-result = subprocess.run(["gsettings", "set", schema, key, new_value], check=False)
-sys.exit(result.returncode)
-PY
+  local schema="$1" key="$2" value="$3" current new_value
+  current="$(user_gsettings get "$schema" "$key" 2>/dev/null || printf '[]')"
+  new_value="$(CURRENT="$current" python3 "$HOTKEYS_SETUP_LIB_DIR/gsettings_strv.py" append "$value")"
+  user_gsettings set "$schema" "$key" "$new_value"
 }
 
 remove_gsettings_list() {
-  local schema="$1" key="$2" value="$3"
-  run_as_target env SCHEMA="$schema" KEY="$key" VALUE="$value" python3 - <<'PY'
-import ast
-import os
-import subprocess
-import sys
-
-schema = os.environ["SCHEMA"]
-key = os.environ["KEY"]
-value = os.environ["VALUE"]
-current = subprocess.run(
-    ["gsettings", "get", schema, key],
-    text=True,
-    capture_output=True,
-    check=False,
-).stdout.strip()
-if current.startswith("@as "):
-    current = current[4:].strip()
-try:
-    values = ast.literal_eval(current) if current else []
-except Exception:
-    values = []
-values = [item for item in values if item != value]
-new_value = "[" + ", ".join(repr(v) for v in values) + "]"
-result = subprocess.run(["gsettings", "set", schema, key, new_value], check=False)
-sys.exit(result.returncode)
-PY
+  local schema="$1" key="$2" value="$3" current new_value
+  current="$(user_gsettings get "$schema" "$key" 2>/dev/null || printf '[]')"
+  new_value="$(CURRENT="$current" python3 "$HOTKEYS_SETUP_LIB_DIR/gsettings_strv.py" remove "$value")"
+  user_gsettings set "$schema" "$key" "$new_value"
 }
 
 set_indexed_keybinding_map() {

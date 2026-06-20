@@ -145,9 +145,27 @@ def test_monitor_window_hotkey_assets_exist():
     extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"
     assert (extension_dir / "extension.js").is_file()
     assert (extension_dir / "apply-system-bindings.sh").is_file()
+    assert (extension_dir / "gsettings-strv.py").is_file()
     assert (extension_dir / "schemas" / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
+
+
+def test_gsettings_list_mutation_uses_extracted_helper():
+    helpers = (ROOT_DIR / "lib/gsettings_helpers.sh").read_text(encoding="utf-8")
+    apply_bindings = (
+        ROOT_DIR
+        / "configs"
+        / "gnome-shell"
+        / "extensions"
+        / "monitor-window-hotkeys@local"
+        / "apply-system-bindings.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "gsettings_strv.py" in helpers
+    assert "python3 - <<'PY'" not in helpers
+    assert "gsettings-strv.py" in apply_bindings
+    assert "python3 - <<'PY'" not in apply_bindings
 
 
 def test_workspace_number_popup_extension_writes_expected_assets():
