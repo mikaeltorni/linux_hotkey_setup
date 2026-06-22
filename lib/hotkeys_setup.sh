@@ -82,71 +82,15 @@ if [ "${#SUPER_ARROW_MOVE_BINDINGS[@]}" -eq 1 ]; then
   )
 fi
 
-# msg — Print a highlighted progress banner to stdout.
-# Args: $* — message text to display after the "==> " prefix.
-msg() {
-  printf '\n==> %s\n' "$*"
-}
+# The shared install-time helpers (msg, need_cmd, is_root, run_as_target, and the
+# sudo-skip reporting) are provided by the framework's installer_helpers.sh,
+# loaded by install.sh via isc_load_helpers before this file is sourced. Only the
+# repo-specific log() format is kept here.
 
 # log — Print a level-tagged diagnostic line to stderr.
 # Args: $1 — log level label (e.g. info, warn); $2 — message text.
 log() {
   printf '[%s] %s\n' "$1" "$2" >&2
-}
-
-# need_cmd — Return success when the named command is on PATH.
-# Args: $1 — command name to probe.
-need_cmd() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-# is_root — Return success when running with root privileges.
-is_root() {
-  [ "$(id -u)" -eq 0 ]
-}
-
-# Steps that were skipped because they need root; reported at the end of the run.
-SUDO_REQUIRED_STEPS=()
-
-# note_sudo_required — Record a root-only step that was skipped in user mode.
-note_sudo_required() {
-  SUDO_REQUIRED_STEPS+=("$1")
-  msg "SKIP (requires sudo): $1"
-}
-
-# report_sudo_required — Print the root-only steps that were skipped, if any.
-report_sudo_required() {
-  [ "${#SUDO_REQUIRED_STEPS[@]}" -eq 0 ] && return 0
-  msg "The following steps still require root and were skipped:"
-  printf '    - %s\n' "${SUDO_REQUIRED_STEPS[@]}"
-  msg "Apply them with: sudo bash install.sh"
-}
-
-# run_as_target — Run a command as TARGET_USER with that user's graphical
-# session environment (HOME, XDG_RUNTIME_DIR, DBUS, DISPLAY) so gsettings and
-# systemctl --user reach the live session. Runs directly when already the target
-# user, otherwise via `sudo -u`.
-# Args: $@ — command and arguments to execute.
-run_as_target() {
-  if [ "$(id -un)" = "$TARGET_USER" ]; then
-    env \
-      HOME="$TARGET_HOME" \
-      USER="$TARGET_USER" \
-      LOGNAME="$TARGET_USER" \
-      XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-      DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
-      DISPLAY="$DISPLAY_VAL" \
-      "$@"
-  else
-    sudo -H -u "$TARGET_USER" env \
-      HOME="$TARGET_HOME" \
-      USER="$TARGET_USER" \
-      LOGNAME="$TARGET_USER" \
-      XDG_RUNTIME_DIR="$RUNTIME_DIR" \
-      DBUS_SESSION_BUS_ADDRESS="$USER_BUS" \
-      DISPLAY="$DISPLAY_VAL" \
-      "$@"
-  fi
 }
 
 # shellcheck source=gsettings_helpers.sh
