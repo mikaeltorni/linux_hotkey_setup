@@ -27,8 +27,15 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
+HELPERS = ROOT_DIR.parent / "linux_installation_scripts_functions" / "installer_helpers.sh"
+
+
 def run_bash(script: str) -> subprocess.CompletedProcess[str]:
     """Run a bash snippet from the project root.
+
+    The shared install-time helpers (run_as_target, msg, need_cmd, …) now live in
+    the framework and are loaded by install.sh before lib/hotkeys_setup.sh, so the
+    harness sources them too. Snippets may still override individual helpers.
 
     Args:
         script: Bash source to execute.
@@ -36,8 +43,9 @@ def run_bash(script: str) -> subprocess.CompletedProcess[str]:
     Returns:
         CompletedProcess with stdout, stderr, and return code.
     """
+    full = f'source {str(HELPERS)!r}\n{script}'
     return subprocess.run(
-        ["bash", "-c", script],
+        ["bash", "-c", full],
         cwd=ROOT_DIR,
         text=True,
         capture_output=True,
