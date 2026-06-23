@@ -93,17 +93,20 @@ for path, name in devices:
 }
 
 # configure_ctrl_back_window_tiler_service — Install the ctrl_back_tile_right.py
-# script and its systemd --user unit, pinning the unit to the device chosen by
-# select_input_device (via CTRL_BACK_TILE_DEVICE), then enable and start it.
-# Skipped when the source files are missing. Takes no arguments; reads
-# SELECTED_INPUT_DEVICE and HOTKEYS_SETUP_CONFIG_DIR.
+# service script, its centralized Python logger, and its systemd --user unit.
+# Pins the unit to the device chosen by select_input_device (via
+# CTRL_BACK_TILE_DEVICE), then enables and starts it. Skipped when the source
+# files are missing. Takes no arguments; reads SELECTED_INPUT_DEVICE and
+# HOTKEYS_SETUP_CONFIG_DIR.
 configure_ctrl_back_window_tiler_service() {
   msg "Installing Ctrl + browser-back window tiler service"
   local script_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl_back_tile_right.py"
+  local logging_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/hotkey_logging_utils.py"
   local service_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl-back-window-tiler.service"
   local script_target="$TARGET_HOME/.local/bin/ctrl_back_tile_right.py"
+  local logging_target="$TARGET_HOME/.local/bin/hotkey_logging_utils.py"
   local service_target="$TARGET_HOME/.config/systemd/user/ctrl-back-window-tiler.service"
-  if [ ! -f "$script_source" ] || [ ! -f "$service_source" ]; then
+  if [ ! -f "$script_source" ] || [ ! -f "$logging_source" ] || [ ! -f "$service_source" ]; then
     msg "Ctrl-back tiler service source files missing; skipping."
     return 0
   fi
@@ -112,8 +115,10 @@ configure_ctrl_back_window_tiler_service() {
   run_as_target mkdir -p "$(dirname "$service_target")"
   if is_root; then
     install -D -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$script_source" "$script_target"
+    install -D -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" "$logging_source" "$logging_target"
   else
     install -D -m 0755 "$script_source" "$script_target"
+    install -D -m 0644 "$logging_source" "$logging_target"
   fi
   run_as_target tee "$service_target" >/dev/null <<EOF
 [Unit]

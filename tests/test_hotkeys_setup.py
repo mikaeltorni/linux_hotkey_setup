@@ -157,6 +157,7 @@ def test_monitor_window_hotkey_assets_exist():
     assert (extension_dir / "gsettings-strv.py").is_file()
     assert (extension_dir / "schemas" / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py").is_file()
+    assert (ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
 
 
@@ -292,7 +293,7 @@ def test_ctrl_back_device_selection_fails_when_no_device_is_detected():
 
 
 def test_ctrl_back_service_installs_script_and_selected_device():
-    """Ctrl+Back setup should install its runtime script and configured user service."""
+    """Ctrl+Back setup should install its script, logger, and user service."""
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
         home.mkdir()
@@ -331,6 +332,11 @@ def test_ctrl_back_service_installs_script_and_selected_device():
         assert script_target.read_bytes() == (
             ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py"
         ).read_bytes()
+        logging_target = home / ".local" / "bin" / "hotkey_logging_utils.py"
+        assert logging_target.read_bytes() == (
+            ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py"
+        ).read_bytes()
+        assert not logging_target.stat().st_mode & 0o111
         assert script_target.stat().st_mode & 0o111
         assert f"ExecStart={script_target}" in service
         assert (
