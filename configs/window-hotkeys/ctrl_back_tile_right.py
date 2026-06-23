@@ -13,12 +13,12 @@ import atexit
 import os
 import select
 import signal
-import sys
 import time
 from dataclasses import dataclass
 
 import gi
 from evdev import InputDevice, UInput, ecodes, list_devices
+from hotkey_logging_utils import LOGGER, log_call
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
@@ -78,15 +78,17 @@ class CtrlBackWindowTiler:
         self.last_scan_at = 0.0
         self.target_device = os.environ.get("CTRL_BACK_TILE_DEVICE", "").strip()
         self.pointer_path = self.target_device
+        self.reported_missing_target = False
         self.dbus_proxy = self._create_dbus_proxy()
         atexit.register(self.close)
 
+    @log_call(LOGGER)
     def run(self) -> None:
         """Watch input devices until the service is stopped."""
         signal.signal(signal.SIGTERM, self._stop)
         signal.signal(signal.SIGINT, self._stop)
         self._open_devices()
-        print("ctrl-back-window-tiler running (direct D-Bus mode)", flush=True)
+        LOGGER.info("running in direct D-Bus mode")
 
         try:
             while self.running:
@@ -155,6 +157,7 @@ class CtrlBackWindowTiler:
         """
         self.running = False
 
+    @log_call(LOGGER)
     def _create_dbus_proxy(self) -> Gio.DBusProxy:
         """Create a proxy for the GNOME Shell extension's tiling API."""
         return Gio.DBusProxy.new_for_bus_sync(
@@ -177,14 +180,11 @@ class CtrlBackWindowTiler:
                 1000,
                 None,
             )
-            print("tiled focused window to the right half", flush=True)
+            LOGGER.info("tiled focused window to the right half")
         except GLib.Error as exc:
-            print(
-                f"ctrl-back-window-tiler: D-Bus tiling failed: {exc.message}",
-                file=sys.stderr,
-                flush=True,
-            )
+            LOGGER.error("D-Bus tiling failed: %s", exc.message)
 
+    @log_call(LOGGER)
     def _open_devices(self) -> None:
         """Open the selected pointer and all Ctrl-capable keyboard nodes."""
         self.forward_capabilities = {}
@@ -222,12 +222,7 @@ class CtrlBackWindowTiler:
             grabbed = False
             if is_pointer:
                 if not self._is_back_pointer(caps):
-                    print(
-                        f"ctrl-back-window-tiler: {path} is not a back-button "
-                        "pointing device",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    LOGGER.warning("%s is not a back-button pointing device", path)
                     device.close()
                     self.pointer_path = ""
                     continue
@@ -237,14 +232,22 @@ class CtrlBackWindowTiler:
 
             self.devices.append(WatchedDevice(device=device, grabbed=grabbed))
             mode = "grabbed pointer" if grabbed else "Ctrl monitor"
-            print(f"watching {path}: {device.name} [{mode}]", flush=True)
+            LOGGER.info("watching %s: %s [%s]", path, device.name, mode)
 
     def _select_pointer_path(self, paths: list[str]) -> str:
         """Resolve a configured stable path or auto-detect an available pointer."""
         if self.target_device:
             resolved_path = os.path.realpath(self.target_device)
             if resolved_path in paths:
+                self.reported_missing_target = False
                 return resolved_path
+            if not getattr(self, "reported_missing_target", False):
+                LOGGER.warning(
+                    "configured pointer device is unavailable: %s -> %s",
+                    self.target_device,
+                    resolved_path,
+                )
+                self.reported_missing_target = True
             return ""
 
         if self.pointer_path in paths:
@@ -298,11 +301,7 @@ class CtrlBackWindowTiler:
             device.grab()
             return True
         except OSError as exc:
-            print(
-                f"ctrl-back-window-tiler: could not grab {device.path}: {exc}",
-                file=sys.stderr,
-                flush=True,
-            )
+            LOGGER.error("could not grab %s: %s", device.path, exc)
             return False
 
     def _add_forward_capabilities(self, caps: dict[int, list[int]]) -> None:
@@ -334,14 +333,19 @@ class CtrlBackWindowTiler:
         if not self.forward_capabilities:
             return
 
-        self.ui = UInput(
-            {
-                event_type: sorted(codes)
-                for event_type, codes in self.forward_capabilities.items()
-                if codes
-            },
-            name=VIRTUAL_DEVICE_NAME,
-        )
+        try:
+            self.ui = UInput(
+                {
+                    event_type: sorted(codes)
+                    for event_type, codes in self.forward_capabilities.items()
+                    if codes
+                },
+                name=VIRTUAL_DEVICE_NAME,
+            )
+            LOGGER.info("opened virtual forwarding input device")
+        except OSError as exc:
+            LOGGER.error("could not open virtual forwarding input device: %s", exc)
+            self.ui = None
 
     def _rescan_devices(self) -> None:
         """Periodically pick up hot-plugged devices, rebuilding uinput if needed.
@@ -470,8 +474,21 @@ class CtrlBackWindowTiler:
             return
         if code not in self.forward_capabilities.get(event_type, set()):
             return
-        self.ui.write(event_type, code, value)
-        self.ui.syn()
+        try:
+            self.ui.write(event_type, code, value)
+            self.ui.syn()
+        except OSError as exc:
+            LOGGER.error(
+                "could not forward input event %s/%s: %s",
+                event_type,
+                code,
+                exc,
+            )
+            try:
+                self.ui.close()
+            except OSError:
+                pass
+            self.ui = None
 
 
 if __name__ == "__main__":
