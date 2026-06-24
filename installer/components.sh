@@ -19,13 +19,11 @@ ISC_POSTFLIGHT="hotkey_postflight"
 ISC_COMPONENTS=(
   "screenshot|Screenshot shortcuts|on|configure_screenshot_binding"
   "workspace_keys|Numbered workspace switch/move keys|on|configure_workspace_keys"
-  "albert|Albert launcher bindings|on|configure_albert_keybindings"
   "monitor_window_hotkeys|Monitor/window movement hotkeys extension|on|configure_monitor_window_hotkeys_extension"
   "automatic_window_tiling|Automatic same-app window tiling (<Super>t)|on|configure_automatic_window_tiling"
   "hotkey_window_tools|Pointer-driven window move/resize hotkeys|on|configure_hotkey_window_tools"
   "ctrl_back_tiler|Ctrl+Back window tiler service|on|configure_ctrl_back_window_tiler_service"
   "workspace_popup|Numbered workspace popup extension|on|configure_workspace_number_popup_extension"
-  "primary_paste_block|Block middle-click primary paste|on|lock_primary_paste"
 )
 
 # hotkey_postflight - audit the applied keybindings and report any skipped
