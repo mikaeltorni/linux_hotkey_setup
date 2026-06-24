@@ -10,9 +10,10 @@
 ISC_REPO_NAME="linux_hotkey_setup"
 ISC_REPO_LABEL="GNOME hotkeys and window tools"
 
-# select_input_device picks the keyboard device used by the Ctrl+Back tiler and
-# must run before the components that rely on it; audit + sudo summary run after.
-ISC_PREFLIGHT="select_input_device"
+# Device selection for the Ctrl+Back tiler now lives inside that component
+# (configure_ctrl_back_window_tiler_service) so it only runs when the tiler is
+# selected and never prompts a user who deselected it. The post-install audit +
+# sudo summary still run once after the selected components.
 ISC_POSTFLIGHT="hotkey_postflight"
 
 ISC_COMPONENTS=(

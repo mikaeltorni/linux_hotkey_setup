@@ -346,6 +346,74 @@ def test_ctrl_back_service_installs_script_and_selected_device():
         assert calls == ["reload", "enable ctrl-back-window-tiler.service"]
 
 
+def test_ctrl_back_component_self_selects_device_when_unset():
+    """The tiler component should detect a device itself, not via a global preflight."""
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        home.mkdir()
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    f"TARGET_HOME={str(home)!r}",
+                    "TARGET_USER=$(id -un)",
+                    "source lib/hotkeys_setup.sh",
+                    "python3() {",
+                    "  printf '%s\\n' '/dev/input/by-id/auto-event-mouse|Auto Mouse'",
+                    "}",
+                    "run_as_target() { \"$@\"; }",
+                    "is_root() { return 1; }",
+                    "reload_systemd_daemon() { :; }",
+                    "enable_systemd_service() { :; }",
+                    "configure_ctrl_back_window_tiler_service",
+                ]
+            )
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        service = (
+            home / ".config" / "systemd" / "user" / "ctrl-back-window-tiler.service"
+        ).read_text(encoding="utf-8")
+        assert (
+            "Environment=CTRL_BACK_TILE_DEVICE=/dev/input/by-id/auto-event-mouse"
+        ) in service
+
+
+def test_ctrl_back_component_skips_cleanly_when_no_device():
+    """With no suitable pointer the tiler component is a clean skip, not a failure."""
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        home.mkdir()
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    f"TARGET_HOME={str(home)!r}",
+                    "TARGET_USER=$(id -un)",
+                    "source lib/hotkeys_setup.sh",
+                    "python3() { return 0; }",
+                    "configure_ctrl_back_window_tiler_service",
+                ]
+            )
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        assert not (
+            home / ".config" / "systemd" / "user" / "ctrl-back-window-tiler.service"
+        ).exists()
+
+
+def test_components_manifest_has_no_global_device_preflight():
+    """Device selection must stay inside the tiler component, not a global preflight."""
+    manifest = (ROOT_DIR / "installer" / "components.sh").read_text(encoding="utf-8")
+    assert 'ISC_PREFLIGHT="select_input_device"' not in manifest
+    assert "ctrl_back_tiler|" in manifest
+
+
 def test_automatic_window_tiling_is_delegated_to_sibling_repository():
     """Hotkey setup should call the standalone tiler with the configured binding."""
     setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")

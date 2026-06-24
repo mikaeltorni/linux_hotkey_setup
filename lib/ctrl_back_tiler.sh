@@ -100,6 +100,18 @@ for path, name in devices:
 # HOTKEYS_SETUP_CONFIG_DIR.
 configure_ctrl_back_window_tiler_service() {
   msg "Installing Ctrl + browser-back window tiler service"
+
+  # Device selection belongs to this component alone: only prompt/detect when
+  # the tiler is actually being installed, and only when a caller (or test)
+  # hasn't already pinned SELECTED_INPUT_DEVICE. A missing device is a clean
+  # skip, not an installer failure.
+  if [[ -z "${SELECTED_INPUT_DEVICE:-}" ]]; then
+    if ! select_input_device; then
+      msg "No pointing device with a back button detected; skipping Ctrl+Back tiler service."
+      return 0
+    fi
+  fi
+
   local script_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl_back_tile_right.py"
   local logging_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/hotkey_logging_utils.py"
   local service_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl-back-window-tiler.service"
