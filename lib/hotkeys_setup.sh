@@ -281,5 +281,8 @@ configure_hotkey_window_tools() {
     return 0
   fi
 
-  TARGET_USER="$TARGET_USER" bash "$installer"
+  # Pass --default so the component-aware tools installer runs non-interactively.
+  # Without a selection flag it would open its interactive submenu on the parent
+  # installer's inherited TTY and block forever, hanging the whole master run.
+  TARGET_USER="$TARGET_USER" bash "$installer" --default
 }

@@ -432,6 +432,19 @@ def test_automatic_window_tiling_is_delegated_to_sibling_repository():
     assert "tileFocusedApplicationWindows" not in extension
 
 
+def test_hotkey_window_tools_delegation_runs_non_interactively():
+    """The delegated tools installer must run with --default, never the menu.
+
+    linux_hotkey_window_tools is component-aware, so invoking it with no
+    selection flag would open its interactive submenu on the parent installer's
+    inherited TTY and block the whole master run.
+    """
+    setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
+
+    assert "configure_hotkey_window_tools()" in setup
+    assert 'bash "$installer" --default' in setup
+
+
 def test_apply_system_bindings_reassigns_super_vertical_arrows_to_half_tiling():
     """System binding application should free Super+Up/Down for top/bottom tiling."""
     extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"
