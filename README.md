@@ -4,7 +4,7 @@
 
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
-It owns screenshot shortcuts, numbered workspace switching and moving, Albert launcher shortcuts, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, the Ctrl+Back window tiler user service, and the optional primary-paste blocker service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository, and pointer-driven window move/resize hotkeys are delegated to the sibling `linux_hotkey_window_tools` repository (installed by default).
+It owns screenshot shortcuts, numbered workspace switching and moving, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, and the Ctrl+Back window tiler user service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository, and pointer-driven window move/resize hotkeys are delegated to the sibling `linux_hotkey_window_tools` repository (installed by default). The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service have moved to the sibling `linux_workspaces_setup` repository.
 
 ## Repository dependencies
 

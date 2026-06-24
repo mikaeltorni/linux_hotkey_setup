@@ -4,14 +4,12 @@
 # Components:
 #   - configure_screenshot_binding(): Bind screenshot keys; unbind screen recording.
 #   - configure_workspace_keys(): Bind numbered workspace switching/moving keys.
-#   - configure_albert_keybindings(): Bind Albert launcher shortcuts.
 #   - configure_monitor_window_hotkeys_extension(): Install monitor/window GNOME Shell hotkeys.
 #   - configure_automatic_window_tiling(): Delegate automatic tiling installation.
 #   - configure_hotkey_window_tools(): Delegate window move/resize hotkey install.
 #   - configure_workspace_number_popup_extension(): Install numbered workspace popup extension.
 #   - select_input_device(): Select a pointing device for Ctrl+Back tiling.
 #   - configure_ctrl_back_window_tiler_service(): Install Ctrl+Back window tiler service.
-#   - lock_primary_paste(): Configure xmousepasteblock (see lib/xmousepasteblock.sh).
 #
 # Usage:
 #   source lib/hotkeys_setup.sh
@@ -99,8 +97,6 @@ source "$HOTKEYS_SETUP_LIB_DIR/gsettings_helpers.sh"
 source "$HOTKEYS_SETUP_LIB_DIR/ctrl_back_tiler.sh"
 # shellcheck source=workspace_popup.sh
 source "$HOTKEYS_SETUP_LIB_DIR/workspace_popup.sh"
-# shellcheck source=xmousepasteblock.sh
-source "$HOTKEYS_SETUP_LIB_DIR/xmousepasteblock.sh"
 
 # apt_update_once — Refresh the apt cache the first time only (idempotent across
 # multiple apt_install calls in one run via the APT_UPDATED guard).
@@ -192,17 +188,6 @@ configure_workspace_keys() {
   user_gsettings set org.gnome.mutter workspaces-only-on-primary false
   user_gsettings set org.gnome.shell.app-switcher current-workspace-only true
   user_gsettings set org.gnome.shell.window-switcher current-workspace-only true
-}
-
-# configure_albert_keybindings — Register a GNOME custom keybinding that toggles
-# the Albert launcher with the 'aring' (Å) key. Takes no arguments.
-configure_albert_keybindings() {
-  msg "Configuring Albert launcher keybindings"
-  local path_aring="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/albert-aring/"
-  update_custom_keybindings "$path_aring"
-  user_gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$path_aring" name "'Albert Toggle (Å)'"
-  user_gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$path_aring" command "'albert toggle'"
-  user_gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"$path_aring" binding "'aring'"
 }
 
 # audit_keybindings — Print the currently applied overview/switch/screenshot
