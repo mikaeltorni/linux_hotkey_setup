@@ -149,6 +149,72 @@ def test_workspace_and_screenshot_bindings_are_applied():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_detect_workspace_keys_requires_configured_bindings():
+    """GNOME default workspace bindings must not count as this component."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "WORKSPACE_SWITCH_BINDINGS=('1:<Super>Z' '2:<Super>X')",
+                "WORKSPACE_MOVE_BINDINGS=('1:<Super><Shift>z' '2:<Super><Shift>x')",
+                "source lib/hotkeys_setup.sh",
+                "source lib/lifecycle.sh",
+                "run_as_target() {",
+                "  if [ \"$1\" = gsettings ] && [ \"$2\" = get ]; then",
+                "    case \"$3 $4\" in",
+                "      'org.gnome.desktop.wm.keybindings switch-to-workspace-1') printf \"['<Super>1']\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings move-to-workspace-1') printf \"[]\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings switch-to-workspace-2') printf \"[]\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings move-to-workspace-2') printf \"[]\\n\" ;;",
+                "      *) printf \"[]\\n\" ;;",
+                "    esac",
+                "  fi",
+                "}",
+                "if detect_workspace_keys; then exit 1; fi",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_detect_workspace_keys_accepts_configured_bindings():
+    """The workspace component is installed only when configured bindings match."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "WORKSPACE_SWITCH_BINDINGS=('1:<Super>Z' '2:<Super>X')",
+                "WORKSPACE_MOVE_BINDINGS=('1:<Super><Shift>z' '2:<Super><Shift>x')",
+                "source lib/hotkeys_setup.sh",
+                "source lib/lifecycle.sh",
+                "run_as_target() {",
+                "  if [ \"$1\" = gsettings ] && [ \"$2\" = get ]; then",
+                "    case \"$3 $4\" in",
+                "      'org.gnome.desktop.wm.keybindings switch-to-workspace-1') printf \"['<Super>Z']\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings move-to-workspace-1') printf \"['<Super><Shift>z']\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings switch-to-workspace-2') printf \"['<Super>X']\\n\" ;;",
+                "      'org.gnome.desktop.wm.keybindings move-to-workspace-2') printf \"['<Super><Shift>x']\\n\" ;;",
+                "      *) printf \"[]\\n\" ;;",
+                "    esac",
+                "  fi",
+                "}",
+                "detect_workspace_keys",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+
+
 def test_monitor_window_hotkey_assets_exist():
     """Transferred monitor/window hotkey extension and Ctrl+Back assets should exist."""
     extension_dir = ROOT_DIR / "configs" / "gnome-shell" / "extensions" / "monitor-window-hotkeys@local"

@@ -18,6 +18,15 @@ hs_delegate() {  # $1 repo dir name, $2.. = --uninstall ids
     run_as_target bash "$dir/install.sh" "${@:2}" || true
   fi
 }
+hs_strv_is_single() {
+  local actual="$1" expected="$2"
+  [[ "$actual" == "['$expected']" ]]
+}
+hs_binding_matches() {
+  local schema="$1" key="$2" expected="$3" actual
+  actual="$(run_as_target gsettings get "$schema" "$key" 2>/dev/null || true)"
+  hs_strv_is_single "$actual" "$expected"
+}
 
 # --- Detection ---------------------------------------------------------------
 detect_screenshot() {
@@ -25,8 +34,18 @@ detect_screenshot() {
     | grep -q 'custom-screenshot'
 }
 detect_workspace_keys() {
-  local v; v="$(run_as_target gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-1 2>/dev/null)"
-  [ -n "$v" ] && [ "$v" != "@as []" ] && [ "$v" != "[]" ]
+  local entry idx binding
+  for entry in "${WORKSPACE_SWITCH_BINDINGS[@]}"; do
+    idx="${entry%%:*}"
+    binding="${entry#*:}"
+    hs_binding_matches org.gnome.desktop.wm.keybindings "switch-to-workspace-$idx" "$binding" || return 1
+  done
+  for entry in "${WORKSPACE_MOVE_BINDINGS[@]}"; do
+    idx="${entry%%:*}"
+    binding="${entry#*:}"
+    hs_binding_matches org.gnome.desktop.wm.keybindings "move-to-workspace-$idx" "$binding" || return 1
+  done
+  return 0
 }
 detect_monitor_window_hotkeys() { [ -d "$(hs_ext_dir monitor-window-hotkeys@local)" ]; }
 detect_automatic_window_tiling() { [ -d "$(hs_ext_dir automatic-window-tiling@local)" ]; }
