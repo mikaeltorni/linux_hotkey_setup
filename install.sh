@@ -73,6 +73,7 @@ isc_load_helpers
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/lib/hotkeys_setup.sh"
+source "$SCRIPT_DIR/lib/lifecycle.sh"
 
 # Component selection runtime and this repository's component manifest. The
 # manifest maps each component id to a configure_*/lock_* function from
@@ -89,7 +90,7 @@ main() {
 # Listing/help must print only their own output (the master installer parses
 # --list-components); skip the trailing completion message for those.
 case "${1:-}" in
-  --list-components|--help|-h) component_main "$@"; exit $? ;;
+  --list-components|--detect|--help|-h|--uninstall|--uninstall=*) component_main "$@"; exit $? ;;
 esac
 
 main "$@"

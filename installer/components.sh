@@ -17,13 +17,13 @@ ISC_REPO_LABEL="GNOME hotkeys and window tools"
 ISC_POSTFLIGHT="hotkey_postflight"
 
 ISC_COMPONENTS=(
-  "screenshot|Screenshot shortcuts|on|configure_screenshot_binding"
-  "workspace_keys|Numbered workspace switch/move keys|on|configure_workspace_keys"
-  "monitor_window_hotkeys|Monitor/window movement hotkeys extension|on|configure_monitor_window_hotkeys_extension"
-  "automatic_window_tiling|Automatic same-app window tiling (<Super>t)|on|configure_automatic_window_tiling"
-  "hotkey_window_tools|Pointer-driven window move/resize hotkeys|on|configure_hotkey_window_tools"
-  "ctrl_back_tiler|Ctrl+Back window tiler service|on|configure_ctrl_back_window_tiler_service"
-  "workspace_popup|Numbered workspace popup extension|on|configure_workspace_number_popup_extension"
+  "screenshot|Screenshot shortcuts|on|configure_screenshot_binding|detect_screenshot|uninstall_screenshot"
+  "workspace_keys|Numbered workspace switch/move keys|on|configure_workspace_keys|detect_workspace_keys|uninstall_workspace_keys"
+  "monitor_window_hotkeys|Monitor/window movement hotkeys extension|on|configure_monitor_window_hotkeys_extension|detect_monitor_window_hotkeys|uninstall_monitor_window_hotkeys"
+  "automatic_window_tiling|Automatic same-app window tiling (<Super>t)|on|configure_automatic_window_tiling|detect_automatic_window_tiling|uninstall_automatic_window_tiling"
+  "hotkey_window_tools|Pointer-driven window move/resize hotkeys|on|configure_hotkey_window_tools|detect_hotkey_window_tools|uninstall_hotkey_window_tools"
+  "ctrl_back_tiler|Ctrl+Back window tiler service|on|configure_ctrl_back_window_tiler_service|detect_ctrl_back_tiler|uninstall_ctrl_back_tiler"
+  "workspace_popup|Numbered workspace popup extension|on|configure_workspace_number_popup_extension|detect_workspace_popup|uninstall_workspace_popup"
 )
 
 # hotkey_postflight - audit the applied keybindings and report any skipped
