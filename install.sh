@@ -83,7 +83,21 @@ isc_activate_components
 source "$SCRIPT_DIR/installer/components.sh"
 
 main() {
-  component_main "$@"
+  msg "=== Linux Hotkey Setup ==="
+  
+  # Feature-specific installation support (--features=feature1,feature2,...)
+  SELECTED_FEATURES="${FEATURES:-}"
+  
+  if [ -n "$SELECTED_FEATURES" ]; then
+    IFS="," read -ra FEATURE_ARRAY <<< "$SELECTED_FEATURES"
+    msg "Feature filter active: ${FEATURE_ARRAY[*]}"
+    
+    component_main "--select=${FEATURE_ARRAY[0]:-}" 
+  else
+    msg "Installing all configured components"  
+    component_main "$@"
+  fi
+  
   msg "Ubuntu hotkey setup complete. Log out and back in before testing GNOME Shell extension changes."
 }
 
