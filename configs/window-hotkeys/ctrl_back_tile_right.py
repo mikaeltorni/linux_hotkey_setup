@@ -28,15 +28,41 @@ FORWARD_EVENT_TYPES = {
     ecodes.EV_KEY,
     ecodes.EV_REL,
 }
-BACK_CODES = {
-    ecodes.KEY_BACK,
-    ecodes.BTN_SIDE,
-    ecodes.BTN_EXTRA,
+
+# Modifier keys the window-placement-tiling trigger can require. Configurable via
+# WINDOW_PLACEMENT_TILE_MODIFIER (default Control); multiple names may be joined
+# with "+" and any of their codes counts as "held".
+_MODIFIER_CODES = {
+    "Control": {ecodes.KEY_LEFTCTRL, ecodes.KEY_RIGHTCTRL},
+    "Alt": {ecodes.KEY_LEFTALT, ecodes.KEY_RIGHTALT},
+    "Super": {ecodes.KEY_LEFTMETA, ecodes.KEY_RIGHTMETA},
+    "Shift": {ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT},
 }
-CTRL_CODES = {
-    ecodes.KEY_LEFTCTRL,
-    ecodes.KEY_RIGHTCTRL,
+# Mouse button codes for the trigger, configurable via
+# WINDOW_PLACEMENT_TILE_BUTTON (BTN_BACK, the default, or BTN_FORWARD).
+_BUTTON_CODES = {
+    "BTN_BACK": {ecodes.KEY_BACK, ecodes.BTN_SIDE, ecodes.BTN_EXTRA},
+    "BTN_FORWARD": {ecodes.BTN_FORWARD, ecodes.BTN_EXTRA},
 }
+
+
+def _configured_modifier_codes() -> set[int]:
+    """Return the evdev codes for the configured trigger modifier(s)."""
+    names = os.environ.get("WINDOW_PLACEMENT_TILE_MODIFIER", "Control")
+    codes: set[int] = set()
+    for name in names.replace("|", "+").split("+"):
+        codes |= _MODIFIER_CODES.get(name.strip(), set())
+    return codes or _MODIFIER_CODES["Control"]
+
+
+def _configured_button_codes() -> set[int]:
+    """Return the evdev codes for the configured trigger mouse button."""
+    name = os.environ.get("WINDOW_PLACEMENT_TILE_BUTTON", "BTN_BACK").strip()
+    return _BUTTON_CODES.get(name, _BUTTON_CODES["BTN_BACK"])
+
+
+BACK_CODES = _configured_button_codes()
+CTRL_CODES = _configured_modifier_codes()
 POINTER_REL_CODES = {
     ecodes.REL_X,
     ecodes.REL_Y,

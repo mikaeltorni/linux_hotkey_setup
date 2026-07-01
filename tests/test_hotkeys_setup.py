@@ -65,9 +65,10 @@ def test_exports_expected_hotkey_functions():
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
                 "declare -F configure_screenshot_binding configure_workspace_keys >/dev/null",
-                "declare -F configure_monitor_window_hotkeys_extension configure_automatic_window_tiling configure_workspace_number_popup_extension >/dev/null",
-                "declare -F configure_hotkey_window_tools configure_ctrl_back_window_tiler_service >/dev/null",
-                "declare -F select_input_device >/dev/null",
+                "declare -F configure_workspace_behavior configure_workspace_switch_1 configure_workspace_move_9 >/dev/null",
+                "declare -F configure_monitor_window_hotkeys_extension configure_monitor_move_hotkeys >/dev/null",
+                "declare -F configure_window_placement_tiling_service >/dev/null",
+                "declare -F select_input_device isc_capture_hotkey >/dev/null",
             ]
         )
     )
@@ -149,6 +150,159 @@ def test_workspace_and_screenshot_bindings_are_applied():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_workspace_hotkeys_are_captured_one_by_one():
+    """Each numbered switch and move binding has its own capture/override key."""
+    with tempfile.TemporaryDirectory() as td:
+        capture_log = Path(td) / "capture.log"
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    "TARGET_USER=$(id -un)",
+                    "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                    "WORKSPACE_UI_COUNT=3",
+                    "source lib/hotkeys_setup.sh",
+                    f"CAPTURE_LOG={str(capture_log)!r}",
+                    "isc_capture_hotkey() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> \"$CAPTURE_LOG\"; printf '%s' \"$2\"; }",
+                    "user_gsettings() { :; }",
+                    "set_gsettings_strv() { :; }",
+                    "configure_workspace_keys",
+                ]
+            )
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert capture_log.read_text(encoding="utf-8").splitlines() == [
+            "WORKSPACE_SWITCH_1|<Super>Z|switch to workspace 1",
+            "WORKSPACE_SWITCH_2|<Super>X|switch to workspace 2",
+            "WORKSPACE_SWITCH_3|<Super>C|switch to workspace 3",
+            "WORKSPACE_MOVE_1|<Super><Shift>z|move window to workspace 1",
+            "WORKSPACE_MOVE_2|<Super><Shift>x|move window to workspace 2",
+            "WORKSPACE_MOVE_3|<Super><Shift>c|move window to workspace 3",
+        ]
+
+
+def test_numbered_workspace_hotkeys_are_individual_components():
+    """Standalone/master discovery must expose every switch and move action."""
+    proc = subprocess.run(
+        ["bash", "install.sh", "--list-components"],
+        cwd=ROOT_DIR,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    rows = [line.split("\t") for line in proc.stdout.splitlines()]
+    ids = [row[0] for row in rows]
+    assert "workspace_keys" not in ids
+    assert "workspace_behavior" in ids
+    assert [item for item in ids if item.startswith("workspace_switch_")] == [
+        f"workspace_switch_{index}" for index in range(1, 10)
+    ]
+    assert [item for item in ids if item.startswith("workspace_move_")] == [
+        f"workspace_move_{index}" for index in range(1, 10)
+    ]
+    assert all(len(row) >= 4 for row in rows if row[0].startswith("workspace_"))
+
+
+def test_individual_workspace_component_changes_only_its_binding():
+    """A numbered component must not reconfigure any sibling workspace key."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "source lib/hotkeys_setup.sh",
+                "calls=()",
+                "isc_capture_hotkey() { printf '<Alt><Super>2'; }",
+                "set_gsettings_strv() { calls+=(\"$*\"); }",
+                "configure_workspace_switch_2",
+                "printf '%s\\n' \"${calls[@]}\"",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    calls = [line for line in proc.stdout.splitlines() if line.startswith("org.gnome.")]
+    assert calls == [
+        "org.gnome.desktop.wm.keybindings switch-to-workspace-2 <Alt><Super>2"
+    ]
+
+
+def test_selected_workspace_component_installs_with_detached_stdin(tmp_path):
+    """Master-style --select must apply one row without reading from stdin."""
+    bin_dir = tmp_path / "bin"
+    state_dir = tmp_path / "state"
+    calls = tmp_path / "gsettings.log"
+    bin_dir.mkdir()
+    fake_gsettings = bin_dir / "gsettings"
+    fake_gsettings.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$*\" >> {str(calls)!r}\n"
+        "case \"$1\" in get) printf '%s\\n' '@as []';; esac\n",
+        encoding="utf-8",
+    )
+    fake_gsettings.chmod(0o755)
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{bin_dir}:{env['PATH']}",
+            "XDG_STATE_HOME": str(state_dir),
+            "WORKSPACE_SWITCH_2": "<Alt><Super>2",
+        }
+    )
+    proc = subprocess.run(
+        ["bash", "install.sh", "--select", "workspace_switch_2"],
+        cwd=ROOT_DIR,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    mutations = calls.read_text(encoding="utf-8").splitlines()
+    assert any(
+        "set org.gnome.desktop.wm.keybindings switch-to-workspace-2 "
+        "['<Alt><Super>2']" in line
+        for line in mutations
+    )
+    assert not any("switch-to-workspace-1" in line for line in mutations)
+    assert not any("move-to-workspace-" in line for line in mutations)
+    assert (state_dir / "isc/receipts/linux_hotkey_setup/workspace_switch_2").is_file()
+
+
+def test_workspace_behavior_migrates_combined_component_receipt():
+    """Applying the split behavior component removes legacy workspace_keys state."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "source lib/hotkeys_setup.sh",
+                "cleared=()",
+                "_isc_clear_receipt() { cleared+=(\"$1\"); }",
+                "user_gsettings() { :; }",
+                "set_gsettings_strv() { :; }",
+                "configure_workspace_behavior",
+                "printf '%s\\n' \"${cleared[@]}\"",
+            ]
+        )
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines()[-1] == "workspace_keys"
+
+
 def test_detect_workspace_keys_requires_configured_bindings():
     """GNOME default workspace bindings must not count as this component."""
     proc = run_bash(
@@ -224,7 +378,6 @@ def test_monitor_window_hotkey_assets_exist():
     assert (extension_dir / "schemas" / "org.gnome.shell.extensions.monitor-window-hotkeys.gschema.xml").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py").is_file()
     assert (ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py").is_file()
-    assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl-back-window-tiler.service").is_file()
 
 
 def test_gsettings_list_mutation_uses_extracted_helper():
@@ -244,69 +397,13 @@ def test_gsettings_list_mutation_uses_extracted_helper():
     assert "python3 - <<'PY'" not in apply_bindings
 
 
-def test_workspace_number_popup_extension_writes_expected_assets():
-    """Workspace popup setup should install assets and remove its legacy extension."""
-    with tempfile.TemporaryDirectory() as td:
-        home = Path(td) / "home"
-        old_extension_dir = (
-            home
-            / ".local"
-            / "share"
-            / "gnome-shell"
-            / "extensions"
-            / "workspace-number-popup@local"
-        )
-        old_extension_dir.mkdir(parents=True)
-        (old_extension_dir / "metadata.json").write_text(
-            '{"name": "Numbered Workspace Popup"}\n',
-            encoding="utf-8",
-        )
-
-        proc = run_bash(
-            "\n".join(
-                [
-                    "set -euo pipefail",
-                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
-                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
-                    f"TARGET_HOME={str(home)!r}",
-                    "TARGET_USER=$(id -un)",
-                    "SESSION_TYPE=wayland",
-                    "source lib/hotkeys_setup.sh",
-                    "calls=$TARGET_HOME/workspace-popup.log",
-                    "run_as_target() { \"$@\"; }",
-                    "remove_gsettings_list() { printf 'remove %s %s %s\\n' \"$1\" \"$2\" \"$3\" >> \"$calls\"; }",
-                    "enable_shell_extension() { printf 'enable %s\\n' \"$1\" >> \"$calls\"; }",
-                    "configure_workspace_number_popup_extension",
-                ]
-            )
-        )
-
-        assert proc.returncode == 0, proc.stderr
-        extension_dir = (
-            home
-            / ".local"
-            / "share"
-            / "gnome-shell"
-            / "extensions"
-            / "workspace-number-indicator@local"
-        )
-        metadata = json.loads(
-            (extension_dir / "metadata.json").read_text(encoding="utf-8")
-        )
-        extension = (extension_dir / "extension.js").read_text(encoding="utf-8")
-        stylesheet = (extension_dir / "stylesheet.css").read_text(encoding="utf-8")
-        calls = (home / "workspace-popup.log").read_text(encoding="utf-8")
-
-        assert metadata["uuid"] == "workspace-number-indicator@local"
-        assert metadata["shell-version"] == ["45", "46", "47", "48", "49", "50"]
-        assert "NumberedWorkspacePopupExtension" in extension
-        assert "workspace-number-popup-indicator" in stylesheet
-        assert (
-            "remove org.gnome.shell enabled-extensions "
-            "workspace-number-popup@local"
-        ) in calls
-        assert "enable workspace-number-indicator@local" in calls
-        assert not old_extension_dir.exists()
+def test_numbered_workspace_popup_moved_to_workspaces_repo():
+    """The numbered workspace popup is owned by linux_workspaces_setup now."""
+    setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
+    manifest = (ROOT_DIR / "installer" / "components.sh").read_text(encoding="utf-8")
+    assert "configure_workspace_number_popup_extension" not in setup
+    assert "workspace_popup|" not in manifest
+    assert not (ROOT_DIR / "lib" / "workspace_popup.sh").exists()
 
 
 def test_ctrl_back_device_selection_uses_first_device_non_interactively():
@@ -358,8 +455,8 @@ def test_ctrl_back_device_selection_fails_when_no_device_is_detected():
     assert "tiler service will be skipped" in proc.stdout
 
 
-def test_ctrl_back_service_installs_script_and_selected_device():
-    """Ctrl+Back setup should install its script, logger, and user service."""
+def test_window_placement_tiling_installs_script_and_configured_trigger():
+    """Tiling setup installs its script/logger/service with the captured trigger."""
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
         home.mkdir()
@@ -378,7 +475,7 @@ def test_ctrl_back_service_installs_script_and_selected_device():
                     "is_root() { return 1; }",
                     "reload_systemd_daemon() { printf 'reload\\n' >> \"$calls\"; }",
                     "enable_systemd_service() { printf 'enable %s\\n' \"$1\" >> \"$calls\"; }",
-                    "configure_ctrl_back_window_tiler_service",
+                    "configure_window_placement_tiling_service",
                 ]
             )
         )
@@ -390,7 +487,7 @@ def test_ctrl_back_service_installs_script_and_selected_device():
             / ".config"
             / "systemd"
             / "user"
-            / "ctrl-back-window-tiler.service"
+            / "window-placement-tiling.service"
         )
         service = service_target.read_text(encoding="utf-8")
         calls = (home / "systemd.log").read_text(encoding="utf-8").splitlines()
@@ -409,14 +506,19 @@ def test_ctrl_back_service_installs_script_and_selected_device():
             "Environment=CTRL_BACK_TILE_DEVICE="
             "/dev/input/by-id/primary-event-mouse"
         ) in service
-        assert calls == ["reload", "enable ctrl-back-window-tiler.service"]
+        # Default captured trigger (non-interactive) is Ctrl + mouse Back.
+        assert "Environment=WINDOW_PLACEMENT_TILE_MODIFIER=Control" in service
+        assert "Environment=WINDOW_PLACEMENT_TILE_BUTTON=BTN_BACK" in service
+        assert calls == ["reload", "enable window-placement-tiling.service"]
 
 
-def test_ctrl_back_component_self_selects_device_when_unset():
-    """The tiler component should detect a device itself, not via a global preflight."""
+def test_window_placement_tiling_migrates_legacy_unit():
+    """Installing the renamed service removes the legacy ctrl-back unit."""
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
-        home.mkdir()
+        legacy = home / ".config" / "systemd" / "user" / "ctrl-back-window-tiler.service"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("[Service]\n", encoding="utf-8")
         proc = run_bash(
             "\n".join(
                 [
@@ -425,30 +527,26 @@ def test_ctrl_back_component_self_selects_device_when_unset():
                     f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
                     f"TARGET_HOME={str(home)!r}",
                     "TARGET_USER=$(id -un)",
+                    "SELECTED_INPUT_DEVICE=/dev/input/by-id/primary-event-mouse",
                     "source lib/hotkeys_setup.sh",
-                    "python3() {",
-                    "  printf '%s\\n' '/dev/input/by-id/auto-event-mouse|Auto Mouse'",
-                    "}",
                     "run_as_target() { \"$@\"; }",
                     "is_root() { return 1; }",
                     "reload_systemd_daemon() { :; }",
                     "enable_systemd_service() { :; }",
-                    "configure_ctrl_back_window_tiler_service",
+                    "configure_window_placement_tiling_service",
                 ]
             )
         )
 
         assert proc.returncode == 0, proc.stderr
-        service = (
-            home / ".config" / "systemd" / "user" / "ctrl-back-window-tiler.service"
-        ).read_text(encoding="utf-8")
+        assert not legacy.exists()
         assert (
-            "Environment=CTRL_BACK_TILE_DEVICE=/dev/input/by-id/auto-event-mouse"
-        ) in service
+            home / ".config" / "systemd" / "user" / "window-placement-tiling.service"
+        ).exists()
 
 
-def test_ctrl_back_component_skips_cleanly_when_no_device():
-    """With no suitable pointer the tiler component is a clean skip, not a failure."""
+def test_window_placement_tiling_skips_cleanly_when_no_device():
+    """With no suitable pointer the tiling component is a clean skip, not a failure."""
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
         home.mkdir()
@@ -462,53 +560,34 @@ def test_ctrl_back_component_skips_cleanly_when_no_device():
                     "TARGET_USER=$(id -un)",
                     "source lib/hotkeys_setup.sh",
                     "python3() { return 0; }",
-                    "configure_ctrl_back_window_tiler_service",
+                    "configure_window_placement_tiling_service",
                 ]
             )
         )
 
         assert proc.returncode == 0, proc.stderr
         assert not (
-            home / ".config" / "systemd" / "user" / "ctrl-back-window-tiler.service"
+            home / ".config" / "systemd" / "user" / "window-placement-tiling.service"
         ).exists()
 
 
-def test_components_manifest_has_no_global_device_preflight():
-    """Device selection must stay inside the tiler component, not a global preflight."""
+def test_components_manifest_renames_tiler_and_drops_moved_components():
+    """The manifest exposes window_placement_tiling and no moved-out components."""
     manifest = (ROOT_DIR / "installer" / "components.sh").read_text(encoding="utf-8")
     assert 'ISC_PREFLIGHT="select_input_device"' not in manifest
-    assert "ctrl_back_tiler|" in manifest
+    assert "window_placement_tiling|" in manifest
+    assert "ctrl_back_tiler|" not in manifest
+    # Automatic tiling, pointer move/resize, and the popup are their own repos.
+    assert "automatic_window_tiling|" not in manifest
+    assert "hotkey_window_tools|" not in manifest
+    assert "workspace_popup|" not in manifest
 
 
-def test_automatic_window_tiling_is_delegated_to_sibling_repository():
-    """Hotkey setup should call the standalone tiler with the configured binding."""
+def test_moved_out_features_are_not_configured_here():
+    """The delegators for tiling / pointer tools were removed from this repo."""
     setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
-    extension = (
-        ROOT_DIR
-        / "configs"
-        / "gnome-shell"
-        / "extensions"
-        / "monitor-window-hotkeys@local"
-        / "extension.js"
-    ).read_text(encoding="utf-8")
-
-    assert "configure_automatic_window_tiling()" in setup
-    assert 'bash "$installer" "$AUTOMATIC_WINDOW_TILING_BINDING"' in setup
-    assert "AUTOMATIC_WINDOW_TILING_BINDING:=<Super>t" in setup
-    assert "tileFocusedApplicationWindows" not in extension
-
-
-def test_hotkey_window_tools_delegation_runs_non_interactively():
-    """The delegated tools installer must run with --default, never the menu.
-
-    linux_hotkey_window_tools is component-aware, so invoking it with no
-    selection flag would open its interactive submenu on the parent installer's
-    inherited TTY and block the whole master run.
-    """
-    setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
-
-    assert "configure_hotkey_window_tools()" in setup
-    assert 'bash "$installer" --default' in setup
+    assert "configure_automatic_window_tiling" not in setup
+    assert "configure_hotkey_window_tools" not in setup
 
 
 def test_apply_system_bindings_reassigns_super_vertical_arrows_to_half_tiling():

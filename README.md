@@ -4,7 +4,7 @@
 
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
-It owns screenshot shortcuts, numbered workspace switching and moving, the local monitor/window GNOME Shell hotkeys extension, the numbered workspace popup extension, and the Ctrl+Back window tiler user service. Automatic same-application tiling is delegated to the sibling `linux_automatic_window_tiling` repository, and pointer-driven window move/resize hotkeys are delegated to the sibling `linux_hotkey_window_tools` repository (installed by default). The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service have moved to the sibling `linux_workspaces_setup` repository.
+It owns the configurable screenshot shortcut, numbered workspace switching and moving (up to 9 workspaces), the local monitor/window GNOME Shell hotkeys extension (4 monitors), and the window placement tiling user service (formerly the "Ctrl+Back window tiler"). Every hotkey can be chosen interactively through the shared press-to-capture engine. Automatic same-application tiling now installs from the sibling `linux_automatic_window_tiling` repository, pointer-driven window move/resize hotkeys from `linux_hotkey_window_tools`, and the numbered workspace popup extension from `linux_workspaces_setup` — each a standalone, directly-installed repository that configures its hotkeys the same interactive way. The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service also live in `linux_workspaces_setup`.
 
 ## Repository dependencies
 
@@ -14,13 +14,8 @@ enhance it and never block installation when absent.
 - **Build-time (soft):** the shared installer component framework
   [`linux_installation_scripts_functions`](https://github.com/mikaeltorni/linux_installation_scripts_functions) —
   loaded from a sibling checkout when present, otherwise downloaded on demand.
-- **Delegated installs (optional):** when they sit beside it, this installer
-  also installs
-  [`linux_automatic_window_tiling`](https://github.com/mikaeltorni/linux_automatic_window_tiling)
-  (automatic same-application tiling, with the chosen accelerator) and
-  [`linux_hotkey_window_tools`](https://github.com/mikaeltorni/linux_hotkey_window_tools)
-  (pointer-driven move/resize, installed by default). If either checkout is
-  missing, that feature is skipped — the rest of the hotkey setup still installs.
+  It also provides the shared interactive hotkey-capture engine every hotkey
+  here is configured with.
 
 See the full cross-repository map in
 [installation_scripts/DEPENDENCIES.md](https://github.com/mikaeltorni/installation_scripts/blob/master/DEPENDENCIES.md).
@@ -53,56 +48,50 @@ python3 -m pytest tests -q
 Run shell syntax validation:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 ```
 
 ## Project Structure
 
 - `install.sh` - standalone entrypoint for applying the full hotkey setup.
-- `lib/hotkeys_setup.sh` - shared implementation used by standalone installs and delegated desktop installs.
-- `lib/ctrl_back_tiler.sh` - pointing-device selection and Ctrl+Back user-service installation.
+- `lib/hotkeys_setup.sh` - shared implementation; each hotkey is captured via the shared `isc_capture_hotkey` engine.
+- `lib/ctrl_back_tiler.sh` - pointing-device selection and window-placement-tiling user-service installation (configurable modifier + mouse-button trigger).
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
-- `lib/workspace_popup.sh` - numbered workspace popup extension installation and legacy cleanup.
+- `lib/lifecycle.sh` - per-component detect/uninstall functions.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
-- `configs/window-hotkeys/` - Ctrl+Back tiler script and user service template.
+- `configs/window-hotkeys/` - window-placement-tiling service script and centralized logger.
 - `tests/` - simulation tests.
 
 ## Configuration
 
 Important defaults:
 
-- `WORKSPACE_COUNT=8`
-- `SCREENSHOT_UI_BINDINGS=('<Shift><Super>s')`
-- `SCREENSHOT_QUICK_BINDINGS=('Print')`
-- `OVERVIEW_BINDINGS=('<Super>Tab')`
+Interactive capture is used on a terminal; these are the shown defaults and the
+environment overrides for automated runs:
+
+- `WORKSPACE_COUNT=9` (numbered workspaces created; capture walks up to 9)
+- `SCREENSHOT_HOTKEY` overrides the screenshot default `<Shift><Super>s`
+- `WORKSPACE_SWITCH_<n>` / `WORKSPACE_MOVE_<n>` override each workspace hotkey (defaults `<Super>Z/X/…`, the 9th blank)
+- `MONITOR_MOVE_<n>` overrides "move to monitor N" (defaults `<Alt><Super>x/z/c`, the 4th blank)
+- `WINDOW_PLACEMENT_TILING_TRIGGER` overrides the tiling trigger (default `Control|BTN_BACK`)
 - `MONITOR_WINDOW_HOTKEYS_EXTENSION_ID=monitor-window-hotkeys@local`
-- `AUTOMATIC_WINDOW_TILING_DIR=../linux_automatic_window_tiling`
-- `AUTOMATIC_WINDOW_TILING_BINDING=<Super>t`
-- `HOTKEY_WINDOW_TOOLS_DIR=../linux_hotkey_window_tools`
 
 Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
 Pointer-driven window move (`<Alt><Super>W` drag) and resize (`<Alt><Super>E`
 center scaling) now live in the standalone `linux_hotkey_window_tools`
-repository, which this installer runs by default (see below).
+repository, installed directly by the master installer.
 
-Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The Ctrl+Back mouse button is handled by a separate D-Bus service (ctrl_back_tile_right.py). `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
+Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by a separate D-Bus service (ctrl_back_tile_right.py); its modifier and mouse button are configurable via the capture UI. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 
-When `linux_automatic_window_tiling` exists beside this repository, the
-installer calls its parameterized installer with `<Super>t`. The standalone
-repository owns the extension, tiling behavior, schema, and general-purpose
-binding interface.
-
-Likewise, when `linux_hotkey_window_tools` exists beside this repository, the
-installer runs its `install.sh` by default to provide the pointer-driven window
-move (`<Alt><Super>W`) and resize (`<Alt><Super>E`) hotkeys. That standalone
-repository owns its own `window-move-resize@local` extension and schema and can
-also be installed on its own. The delegation is skipped on X11 and when the
-repository is absent.
+Automatic same-application tiling (`linux_automatic_window_tiling`) and
+pointer-driven move/resize (`linux_hotkey_window_tools`) are standalone,
+directly-installed repositories that own their own extensions, schemas, and
+configurable hotkeys (chosen through the same shared capture engine).
 
 ## Troubleshooting
 
-- If the Ctrl+Back tiler cannot find a pointing device with a browser-back button, it skips the service setup.
+- If the window-placement-tiling service cannot find a pointing device with a browser-back button, it skips the service setup.
 - If monitor/window hotkeys do not respond immediately, log out and back in so GNOME Shell loads the updated extension code.
 - If `Shift+Super+R` triggers GNOME's screen recording instead of move-to-workspace-8, the installer's unbinding of `org.gnome.shell.keybindings show-screen-recording-ui` has not taken effect yet. Re-run `bash install.sh`. This is a `gsettings` keybinding change, which GNOME Shell applies live, so no Shell reload is needed. Verify with `gsettings get org.gnome.shell.keybindings show-screen-recording-ui` returning `@as []`.
 - If GSettings schema writes fail for the local extension, run `glib-compile-schemas` on the extension `schemas/` directory and retry the installer.
@@ -112,7 +101,7 @@ repository is absent.
 Before deploying:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/workspace_popup.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
 python3 -m pytest tests -q
 ```
 
@@ -159,15 +148,34 @@ bash install.sh --list-components  # print: id<TAB>label<TAB>default
 In the interactive menu, **space** toggles a component, `a`/`n` select all
 or none, and **Enter** installs the selection. Components:
 
+A plain install applies each hotkey's shown default (fast, never blocks). To
+press your own hotkeys, set `ISC_HOTKEY_INTERACTIVE=1` — then the shared
+press-to-capture engine lets you press modifiers + one key (Backspace removes the
+last input, Enter confirms, Esc keeps the default). Each hotkey can also be set
+via an environment variable. All components also appear in the master
+`installation_scripts` menu, where you configure everything at once.
+
 | Component id | Description | Default |
 |---|---|---|
-| `screenshot` | Screenshot shortcuts | on |
-| `workspace_keys` | Numbered workspace switch/move keys | on |
-| `monitor_window_hotkeys` | Monitor/window movement hotkeys extension | on |
-| `automatic_window_tiling` | Automatic same-app window tiling (<Super>t) | on |
-| `hotkey_window_tools` | Pointer-driven window move/resize hotkeys | on |
-| `ctrl_back_tiler` | Ctrl+Back window tiler service | on |
-| `workspace_popup` | Numbered workspace popup extension | on |
+| `screenshot` | Screenshot shortcut (default `<Shift><Super>s`) | on |
+| `workspace_behavior` | Static workspace count and shared navigation behavior | on |
+| `workspace_switch_1` … `workspace_switch_8` | One independently selectable switch action per workspace | on |
+| `workspace_switch_9` | Optional switch-to-workspace-9 action (unassigned by default) | off |
+| `workspace_move_1` … `workspace_move_8` | One independently selectable move-window action per workspace | on |
+| `workspace_move_9` | Optional move-window-to-workspace-9 action (unassigned by default) | off |
+| `monitor_window_hotkeys` | Monitor/window movement hotkeys extension (4 monitors) | on |
+| `window_placement_tiling` | Window placement tiling service (Ctrl + mouse Back) | on |
+
+Automatic same-application window tiling, the pointer-driven window move/resize
+hotkeys, and the numbered workspace popup extension are now their own
+directly-installed repositories (`linux_automatic_window_tiling`,
+`linux_hotkey_window_tools`, and `linux_workspaces_setup`), each configuring its
+hotkeys through the same shared press-to-capture engine.
+
+The standalone and master installers both discover these rows from
+`bash install.sh --list-components`. For example, reconfigure only
+`workspace_switch_2` with `ISC_HOTKEY_INTERACTIVE=1`, or script that row with
+`WORKSPACE_SWITCH_2='<Alt><Super>2'`.
 
 
 ## Detect, reconfigure, and uninstall

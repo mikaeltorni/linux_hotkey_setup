@@ -2,8 +2,9 @@
 # install.sh — standalone Ubuntu GNOME hotkey setup.
 #
 # Components:
-#   - main(): Apply screenshot, workspace, Albert, monitor/window, Ctrl+Back,
-#     numbered workspace popup, and primary-paste-blocker hotkey setup.
+#   - main(): Apply the configurable screenshot, individually selectable
+#     numbered-workspace switch/move actions, monitor/window movement, and
+#     window-placement-tiling hotkeys.
 #
 # Usage:
 #   bash install.sh        # user-level setup; apt steps are skipped and reported
@@ -22,11 +23,9 @@ USER_BUS="unix:path=${RUNTIME_DIR}/bus"
 SESSION_TYPE="${XDG_SESSION_TYPE:-unknown}"
 APT_UPDATED=0
 
-WORKSPACE_COUNT="${WORKSPACE_COUNT:-8}"
+WORKSPACE_COUNT="${WORKSPACE_COUNT:-9}"
 MONITOR_WINDOW_HOTKEYS_EXTENSION_ID="monitor-window-hotkeys@local"
 MONITOR_WINDOW_HOTKEYS_SOURCE_DIR="$CONFIG_DIR/gnome-shell/extensions/$MONITOR_WINDOW_HOTKEYS_EXTENSION_ID"
-AUTOMATIC_WINDOW_TILING_DIR="${AUTOMATIC_WINDOW_TILING_DIR:-$SCRIPT_DIR/../linux_automatic_window_tiling}"
-AUTOMATIC_WINDOW_TILING_BINDING="${AUTOMATIC_WINDOW_TILING_BINDING:-<Super>t}"
 
 SCREENSHOT_UI_BINDINGS=('<Shift><Super>s')
 SCREENSHOT_QUICK_BINDINGS=('Print')
@@ -84,20 +83,22 @@ source "$SCRIPT_DIR/installer/components.sh"
 
 main() {
   msg "=== Linux Hotkey Setup ==="
-  
+
   # Feature-specific installation support (--features=feature1,feature2,...)
   SELECTED_FEATURES="${FEATURES:-}"
-  
+
   if [ -n "$SELECTED_FEATURES" ]; then
     IFS="," read -ra FEATURE_ARRAY <<< "$SELECTED_FEATURES"
     msg "Feature filter active: ${FEATURE_ARRAY[*]}"
-    
-    component_main "--select=${FEATURE_ARRAY[0]:-}" 
+    component_main "--select=${FEATURE_ARRAY[0]:-}"
   else
-    msg "Installing all configured components"  
+    # No explicit selection: component_main shows the interactive component menu
+    # on a real terminal, otherwise installs the default-on components. Hotkeys
+    # apply their shown defaults unless ISC_HOTKEY_INTERACTIVE=1 is set to press
+    # custom ones, so automated runs never block.
     component_main "$@"
   fi
-  
+
   msg "Ubuntu hotkey setup complete. Log out and back in before testing GNOME Shell extension changes."
 }
 

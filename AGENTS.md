@@ -1,14 +1,54 @@
 # Agent Command Center — AGENTS.md
 
-## Restarting the ctrl-back-window-tiler after code changes
+## Configurable hotkeys (press-to-capture)
 
-If you modify `configs/window-hotkeys/ctrl_back_tile_right.py`, restart the tiler so changes take effect:
+Every hotkey this repo installs can be chosen through the shared interactive
+press-to-capture engine (`isc_capture_hotkey` from
+`linux_installation_scripts_functions/hotkey_capture.sh`, loaded via
+`isc_load_helpers`). The capture logic is **not** vendored here — do not fork it;
+extend the shared engine instead.
+
+**Interactive capture is opt-in** via `ISC_HOTKEY_INTERACTIVE=1`. A plain install
+(`bash install.sh`, `sudo bash install.sh`, the master run, `--default`,
+`--select`, …) applies each hotkey's shown **default** non-interactively and
+never opens an evdev grab, so it can never appear to hang. This is deliberate:
+the batch install would otherwise prompt for ~24 hotkeys and grab the keyboard
+each time. To press your own hotkeys, run with the env set, e.g.
+`ISC_HOTKEY_INTERACTIVE=1 bash install.sh` (or reconfigure a single component:
+`ISC_HOTKEY_INTERACTIVE=1 bash install.sh --reconfigure screenshot`). In that
+mode the installer shows each default and lets the user press modifiers + one key
+(Backspace removes the last input, Enter confirms, Esc keeps the default),
+warning in real time which GNOME default a chosen accelerator would unbind; the
+read loop times out to the default after prolonged idle so it never blocks.
+
+Every hotkey also has an environment override for fully scripted runs
+(`SCREENSHOT_HOTKEY`, `WORKSPACE_SWITCH_<n>` / `WORKSPACE_MOVE_<n>`,
+`MONITOR_MOVE_<n>`, `WINDOW_PLACEMENT_TILING_TRIGGER`).
+
+Every numbered workspace action appears as its own component row
+(`workspace_switch_1` … `workspace_switch_9` and `workspace_move_1` …
+`workspace_move_9`) in both the master `installation_scripts` menu and the
+standalone submenu. This one-row-per-action contract must not be collapsed back
+into a combined `workspace_keys` component.
+
+Favourite (`f`) and Startup (`s`) are the app-selection menu's own toggles
+(owned by the shared `component_menu.sh` and applied while installing programs in
+`linux_configuration_setup`); they are intentionally **not** part of this hotkey
+capture. In the window-placement-tiling mouse capture, keyboard `F`/`B` instead
+stand in for the mouse Forward/Back buttons.
+
+## Restarting the window placement tiling service after code changes
+
+If you modify `configs/window-hotkeys/ctrl_back_tile_right.py`, restart the
+service so changes take effect:
 
 ```bash
-systemctl --user restart ctrl-back-window-tiler.service
+systemctl --user restart window-placement-tiling.service
 ```
 
-This is required for the Ctrl+Back mouse button right-half tiling to pick up your edits.
+This is required for the modifier + mouse-button half-tiling (default Ctrl +
+mouse Back) to pick up your edits. The installer migrates the legacy
+`ctrl-back-window-tiler.service` unit to this name automatically.
 
 ## GNOME Shell reload requirements
 

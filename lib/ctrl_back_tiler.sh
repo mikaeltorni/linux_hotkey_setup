@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# ctrl_back_tiler.sh - Ctrl+Back device selection and service installation.
+# ctrl_back_tiler.sh - Window placement tiling: pointer device selection and
+# service installation (formerly the "Ctrl+Back window tiler").
 #
 # The caller must provide TARGET_HOME, TARGET_USER, HOTKEYS_SETUP_CONFIG_DIR,
-# and the installer helpers msg(), run_as_target(), is_root(),
-# reload_systemd_daemon(), and enable_systemd_service().
+# the installer helpers msg(), run_as_target(), is_root(),
+# reload_systemd_daemon(), and enable_systemd_service(), and the shared
+# isc_capture_hotkey engine for the configurable trigger.
 
 # select_input_device — Detect pointing devices that expose a back button and
 # choose one for the Ctrl+Back tiler. Prompts interactively; auto-selects the
@@ -92,35 +94,62 @@ for path, name in devices:
   msg "No valid selection; using first detected: $SELECTED_INPUT_DEVICE_NAME"
 }
 
-# configure_ctrl_back_window_tiler_service — Install the ctrl_back_tile_right.py
-# service script, its centralized Python logger, and its systemd --user unit.
-# Pins the unit to the device chosen by select_input_device (via
-# CTRL_BACK_TILE_DEVICE), then enables and starts it. Skipped when the source
-# files are missing. Takes no arguments; reads SELECTED_INPUT_DEVICE and
-# HOTKEYS_SETUP_CONFIG_DIR.
-configure_ctrl_back_window_tiler_service() {
-  msg "Installing Ctrl + browser-back window tiler service"
+# Default modifier + mouse button that trigger window placement tiling.
+WINDOW_PLACEMENT_TILING_MODIFIER_DEFAULT="Control"
+WINDOW_PLACEMENT_TILING_BUTTON_DEFAULT="BTN_BACK"
+WINDOW_PLACEMENT_TILING_SERVICE="window-placement-tiling.service"
+WINDOW_PLACEMENT_TILING_LEGACY_SERVICE="ctrl-back-window-tiler.service"
+
+# configure_window_placement_tiling_service — Install the window-placement
+# tiling service (formerly the "Ctrl+Back window tiler"): a pointer-driven
+# service that half-tiles the focused window when a configurable modifier is held
+# and a configurable mouse button (Back/Forward) is pressed. The trigger is
+# captured through the shared hotkey engine in mouse mode — press the modifier
+# then the mouse Back/Forward button, or (when the mouse has no side buttons)
+# the keyboard B/F stand-ins. Pins the unit to the device chosen by
+# select_input_device and migrates any legacy ctrl-back-window-tiler unit.
+# Takes no arguments; reads SELECTED_INPUT_DEVICE and HOTKEYS_SETUP_CONFIG_DIR.
+configure_window_placement_tiling_service() {
+  msg "Installing window placement tiling service"
 
   # Device selection belongs to this component alone: only prompt/detect when
-  # the tiler is actually being installed, and only when a caller (or test)
+  # the service is actually being installed, and only when a caller (or test)
   # hasn't already pinned SELECTED_INPUT_DEVICE. A missing device is a clean
   # skip, not an installer failure.
   if [[ -z "${SELECTED_INPUT_DEVICE:-}" ]]; then
     if ! select_input_device; then
-      msg "No pointing device with a back button detected; skipping Ctrl+Back tiler service."
+      msg "No pointing device with a back button detected; skipping window placement tiling service."
       return 0
     fi
   fi
 
+  # Capture the trigger (modifier + mouse Back/Forward) in mouse mode. The shared
+  # engine returns "MOD[+MOD]|EVENT"; fall back to the Ctrl+Back default.
+  local trigger modifier button
+  trigger="$(isc_capture_hotkey WINDOW_PLACEMENT_TILING_TRIGGER \
+    "${WINDOW_PLACEMENT_TILING_MODIFIER_DEFAULT}|${WINDOW_PLACEMENT_TILING_BUTTON_DEFAULT}" \
+    "window placement tiling trigger" --mouse)"
+  modifier="${trigger%%|*}"
+  button="${trigger##*|}"
+  [[ -z "$modifier" ]] && modifier="$WINDOW_PLACEMENT_TILING_MODIFIER_DEFAULT"
+  [[ -z "$button" || "$button" == "$modifier" ]] && button="$WINDOW_PLACEMENT_TILING_BUTTON_DEFAULT"
+  msg "Window placement tiling trigger: ${modifier} + ${button}"
+
   local script_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl_back_tile_right.py"
   local logging_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/hotkey_logging_utils.py"
-  local service_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl-back-window-tiler.service"
   local script_target="$TARGET_HOME/.local/bin/ctrl_back_tile_right.py"
   local logging_target="$TARGET_HOME/.local/bin/hotkey_logging_utils.py"
-  local service_target="$TARGET_HOME/.config/systemd/user/ctrl-back-window-tiler.service"
-  if [ ! -f "$script_source" ] || [ ! -f "$logging_source" ] || [ ! -f "$service_source" ]; then
-    msg "Ctrl-back tiler service source files missing; skipping."
+  local service_target="$TARGET_HOME/.config/systemd/user/$WINDOW_PLACEMENT_TILING_SERVICE"
+  if [ ! -f "$script_source" ] || [ ! -f "$logging_source" ]; then
+    msg "Window placement tiling service source files missing; skipping."
     return 0
+  fi
+
+  # Migrate any legacy ctrl-back-window-tiler unit to the renamed service.
+  local legacy_target="$TARGET_HOME/.config/systemd/user/$WINDOW_PLACEMENT_TILING_LEGACY_SERVICE"
+  if [ -f "$legacy_target" ]; then
+    run_as_target systemctl --user disable --now "$WINDOW_PLACEMENT_TILING_LEGACY_SERVICE" 2>/dev/null || true
+    run_as_target rm -f "$legacy_target"
   fi
 
   local device_filter="${SELECTED_INPUT_DEVICE:-}"
@@ -134,7 +163,7 @@ configure_ctrl_back_window_tiler_service() {
   fi
   run_as_target tee "$service_target" >/dev/null <<EOF
 [Unit]
-Description=Ctrl + browser-back window right-half tiler
+Description=Window placement tiling (modifier + mouse button half-tiler)
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -144,10 +173,12 @@ ExecStart=$script_target
 Restart=on-failure
 RestartSec=2
 Environment=CTRL_BACK_TILE_DEVICE=${device_filter:-}
+Environment=WINDOW_PLACEMENT_TILE_MODIFIER=${modifier}
+Environment=WINDOW_PLACEMENT_TILE_BUTTON=${button}
 
 [Install]
 WantedBy=default.target
 EOF
   reload_systemd_daemon
-  enable_systemd_service ctrl-back-window-tiler.service
+  enable_systemd_service "$WINDOW_PLACEMENT_TILING_SERVICE"
 }
