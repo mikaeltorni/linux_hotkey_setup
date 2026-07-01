@@ -65,7 +65,8 @@ def test_exports_expected_hotkey_functions():
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
                 "declare -F configure_screenshot_binding configure_workspace_keys >/dev/null",
-                "declare -F configure_workspace_behavior configure_workspace_switch_1 configure_workspace_move_9 >/dev/null",
+                "declare -F configure_workspace_behavior configure_workspace_switch_1 configure_workspace_move_modifier >/dev/null",
+                "declare -F configure_workspace_switch_field_1 configure_workspace_move_modifier_field >/dev/null",
                 "declare -F configure_monitor_window_hotkeys_extension configure_monitor_move_hotkeys >/dev/null",
                 "declare -F configure_window_placement_tiling_service >/dev/null",
                 "declare -F select_input_device isc_capture_hotkey >/dev/null",
@@ -150,41 +151,27 @@ def test_workspace_and_screenshot_bindings_are_applied():
     assert proc.returncode == 0, proc.stderr
 
 
-def test_workspace_hotkeys_are_captured_one_by_one():
-    """Each numbered switch and move binding has its own capture/override key."""
-    with tempfile.TemporaryDirectory() as td:
-        capture_log = Path(td) / "capture.log"
-        proc = run_bash(
-            "\n".join(
-                [
-                    "set -euo pipefail",
-                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
-                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
-                    "TARGET_USER=$(id -un)",
-                    "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
-                    "WORKSPACE_UI_COUNT=3",
-                    "source lib/hotkeys_setup.sh",
-                    f"CAPTURE_LOG={str(capture_log)!r}",
-                    "isc_capture_hotkey() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" >> \"$CAPTURE_LOG\"; printf '%s' \"$2\"; }",
-                    "user_gsettings() { :; }",
-                    "set_gsettings_strv() { :; }",
-                    "configure_workspace_keys",
-                ]
-            )
-        )
-        assert proc.returncode == 0, proc.stderr
-        assert capture_log.read_text(encoding="utf-8").splitlines() == [
-            "WORKSPACE_SWITCH_1|<Super>Z|switch to workspace 1",
-            "WORKSPACE_SWITCH_2|<Super>X|switch to workspace 2",
-            "WORKSPACE_SWITCH_3|<Super>C|switch to workspace 3",
-            "WORKSPACE_MOVE_1|<Super><Shift>z|move window to workspace 1",
-            "WORKSPACE_MOVE_2|<Super><Shift>x|move window to workspace 2",
-            "WORKSPACE_MOVE_3|<Super><Shift>c|move window to workspace 3",
-        ]
+def test_workspace_hotkeys_expose_typed_fields_and_one_move_modifier():
+    """Switch fields are individually editable while move uses one modifier."""
+    configurable = subprocess.run(
+        ["bash", "install.sh", "--list-configurable-components"],
+        cwd=ROOT_DIR, text=True, capture_output=True, check=False,
+    )
+    values = subprocess.run(
+        ["bash", "install.sh", "--list-component-config-values"],
+        cwd=ROOT_DIR, text=True, capture_output=True, check=False,
+    )
+    assert configurable.returncode == values.returncode == 0
+    assert configurable.stdout.splitlines() == [
+        *(f"workspace_switch_{index}" for index in range(1, 10)),
+        "workspace_move_modifier",
+    ]
+    assert "workspace_switch_6\tSuper+W" in values.stdout
+    assert "workspace_move_modifier\tShift" in values.stdout
 
 
-def test_numbered_workspace_hotkeys_are_individual_components():
-    """Standalone/master discovery must expose every switch and move action."""
+def test_numbered_workspace_hotkeys_use_switch_rows_and_one_move_modifier():
+    """Discovery exposes nine switch fields without nine duplicated move rows."""
     proc = subprocess.run(
         ["bash", "install.sh", "--list-components"],
         cwd=ROOT_DIR,
@@ -202,7 +189,7 @@ def test_numbered_workspace_hotkeys_are_individual_components():
         f"workspace_switch_{index}" for index in range(1, 10)
     ]
     assert [item for item in ids if item.startswith("workspace_move_")] == [
-        f"workspace_move_{index}" for index in range(1, 10)
+        "workspace_move_modifier"
     ]
     assert all(len(row) >= 4 for row in rows if row[0].startswith("workspace_"))
 
@@ -219,7 +206,6 @@ def test_individual_workspace_component_changes_only_its_binding():
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
                 "calls=()",
-                "isc_capture_hotkey() { printf '<Alt><Super>2'; }",
                 "set_gsettings_strv() { calls+=(\"$*\"); }",
                 "configure_workspace_switch_2",
                 "printf '%s\\n' \"${calls[@]}\"",
@@ -230,7 +216,8 @@ def test_individual_workspace_component_changes_only_its_binding():
     assert proc.returncode == 0, proc.stderr
     calls = [line for line in proc.stdout.splitlines() if line.startswith("org.gnome.")]
     assert calls == [
-        "org.gnome.desktop.wm.keybindings switch-to-workspace-2 <Alt><Super>2"
+        "org.gnome.desktop.wm.keybindings switch-to-workspace-2 <Super>X",
+        "org.gnome.desktop.wm.keybindings move-to-workspace-2 <Super><Shift>x",
     ]
 
 
@@ -257,7 +244,7 @@ def test_selected_workspace_component_installs_with_detached_stdin(tmp_path):
         }
     )
     proc = subprocess.run(
-        ["bash", "install.sh", "--select", "workspace_switch_2"],
+        ["bash", "install.sh", "--select", "workspace_behavior,workspace_switch_2"],
         cwd=ROOT_DIR,
         text=True,
         stdin=subprocess.DEVNULL,
@@ -274,8 +261,40 @@ def test_selected_workspace_component_installs_with_detached_stdin(tmp_path):
         for line in mutations
     )
     assert not any("switch-to-workspace-1" in line for line in mutations)
-    assert not any("move-to-workspace-" in line for line in mutations)
+    assert any(
+        "set org.gnome.desktop.wm.keybindings move-to-workspace-2 "
+        "['<Alt><Super><Shift>2']" in line
+        for line in mutations
+    )
+    assert not any("move-to-workspace-1" in line for line in mutations)
     assert (state_dir / "isc/receipts/linux_hotkey_setup/workspace_switch_2").is_file()
+
+
+def test_move_modifier_derives_moves_without_overriding_switches():
+    """One Ctrl modifier derives moves and Super is rejected for Super switches."""
+    proc = run_bash(
+        "\n".join(
+            [
+                "set -euo pipefail",
+                f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                "TARGET_USER=$(id -un)",
+                "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
+                "WORKSPACE_UI_COUNT=2",
+                "WORKSPACE_MOVE_MODIFIER=Control",
+                "source lib/hotkeys_setup.sh",
+                "calls=()",
+                "set_gsettings_strv() { calls+=(\"$*\"); }",
+                "configure_workspace_move_modifier",
+                "printf '%s\\n' \"${calls[@]}\"",
+                "if workspace_validate_move_modifier Super; then exit 9; fi",
+            ]
+        )
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "org.gnome.desktop.wm.keybindings move-to-workspace-1 <Control><Super>z" in proc.stdout
+    assert "org.gnome.desktop.wm.keybindings move-to-workspace-2 <Control><Super>x" in proc.stdout
+    assert "already used" in proc.stderr
 
 
 def test_workspace_behavior_migrates_combined_component_receipt():
@@ -300,7 +319,10 @@ def test_workspace_behavior_migrates_combined_component_receipt():
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.splitlines()[-1] == "workspace_keys"
+    assert proc.stdout.splitlines()[-10:] == [
+        "workspace_keys",
+        *(f"workspace_move_{index}" for index in range(1, 10)),
+    ]
 
 
 def test_detect_workspace_keys_requires_configured_bindings():

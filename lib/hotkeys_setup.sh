@@ -4,14 +4,15 @@
 # Components:
 #   - configure_screenshot_binding(): Capture + bind the screenshot hotkey.
 #   - configure_workspace_behavior(): Apply shared static-workspace behavior.
-#   - configure_workspace_{switch,move}_N(): Configure one numbered action.
+#   - configure_workspace_switch_N(): Apply one typed switch field + derived move.
+#   - configure_workspace_move_modifier(): Rebuild moves from one modifier.
 #   - configure_monitor_window_hotkeys_extension(): Install monitor/window GNOME Shell hotkeys (4 monitors).
 #   - select_input_device(): Select a pointing device for window placement tiling.
 #   - configure_window_placement_tiling_service(): Install the window placement tiling service.
 #
-# Every hotkey above is configurable through the shared press-to-capture engine
-# (isc_capture_hotkey). Automatic window tiling, the pointer move/resize hotkeys,
-# and the numbered workspace popup moved to their own repositories.
+# Hotkey capture and typed fields come from the shared installer framework.
+# Automatic window tiling, pointer move/resize, and the workspace popup live in
+# their own repositories.
 #
 # Usage:
 #   source lib/hotkeys_setup.sh
@@ -45,7 +46,6 @@ SCREENSHOT_UI_BINDINGS=("${SCREENSHOT_UI_BINDINGS[@]:-<Shift><Super>s}")
 SCREENSHOT_QUICK_BINDINGS=("${SCREENSHOT_QUICK_BINDINGS[@]:-Print}")
 OVERVIEW_BINDINGS=("${OVERVIEW_BINDINGS[@]:-<Super>Tab}")
 WORKSPACE_SWITCH_BINDINGS=("${WORKSPACE_SWITCH_BINDINGS[@]:-1:<Super>Z}" "${WORKSPACE_SWITCH_BINDINGS[@]:1}")
-WORKSPACE_MOVE_BINDINGS=("${WORKSPACE_MOVE_BINDINGS[@]:-1:<Super><Shift>z}" "${WORKSPACE_MOVE_BINDINGS[@]:1}")
 SUPER_ARROW_MOVE_BINDINGS=("${SUPER_ARROW_MOVE_BINDINGS[@]:-move-to-workspace-left:<Super><Shift>Left}" "${SUPER_ARROW_MOVE_BINDINGS[@]:1}")
 
 if [ "${#WORKSPACE_SWITCH_BINDINGS[@]}" -eq 1 ]; then
@@ -58,19 +58,6 @@ if [ "${#WORKSPACE_SWITCH_BINDINGS[@]}" -eq 1 ]; then
     "6:<Super>W"
     "7:<Super>E"
     "8:<Super>R"
-  )
-fi
-
-if [ "${#WORKSPACE_MOVE_BINDINGS[@]}" -eq 1 ]; then
-  WORKSPACE_MOVE_BINDINGS=(
-    "1:<Super><Shift>z"
-    "2:<Super><Shift>x"
-    "3:<Super><Shift>c"
-    "4:<Super><Shift>a"
-    "5:<Super><Shift>q"
-    "6:<Super><Shift>w"
-    "7:<Super><Shift>e"
-    "8:<Super><Shift>r"
   )
 fi
 
@@ -115,6 +102,24 @@ if ! declare -F isc_capture_hotkey >/dev/null 2>&1; then
     fi
   }
 fi
+
+# Typed fields live in the shared framework. Resolve the sibling helper for
+# direct library users that did not enter through install.sh/isc_load_helpers.
+if ! declare -F isc_hotkey_field_value >/dev/null 2>&1; then
+  for _hotkey_field_helper in \
+    "$HOTKEYS_SETUP_DIR/../linux_installation_scripts_functions/hotkey_capture.sh" \
+    "${ISC_COMPONENT_LIB_DIR:-}/hotkey_capture.sh"; do
+    if [[ -f "$_hotkey_field_helper" ]]; then
+      # shellcheck source=/dev/null
+      source "$_hotkey_field_helper"
+      break
+    fi
+  done
+  unset _hotkey_field_helper
+fi
+
+# shellcheck source=workspace_hotkey_fields.sh
+source "$HOTKEYS_SETUP_LIB_DIR/workspace_hotkey_fields.sh"
 
 # hotkey_wm_conflict_candidates — print "identifier<TAB>accelerator" lines for
 # every GNOME keybinding currently set, so the capture UI can warn in real time
@@ -232,30 +237,6 @@ hotkey_default_for_index() {
   printf ''
 }
 
-# capture_workspace_bindings — walk workspaces 1..WORKSPACE_UI_COUNT and let the
-# user press a hotkey for the given action, seeding each with its default (the
-# 9th is blank on purpose). Rebuilds the caller-named array with the captured
-# "index:accelerator" entries (blank captures are dropped so they stay unbound).
-# Args: $1 action label ("switch to"/"move window to"); $2 gsettings key prefix
-#       used only for the conflict identifier; $3 nameref result array;
-#       $4.. default "index:binding" entries.
-capture_workspace_bindings() {
-  local action="$1" _keyprefix="$2" resultname="$3"; shift 3
-  local -a defaults=("$@") captured=()
-  local i default accel
-  for (( i=1; i<=WORKSPACE_UI_COUNT; i++ )); do
-    default="$(hotkey_default_for_index "$i" "${defaults[@]}")"
-    ISC_HOTKEY_CONFLICTS_FN=hotkey_wm_conflict_candidates \
-      accel="$(isc_capture_hotkey "WORKSPACE_${_keyprefix}_${i}" "$default" "$action workspace $i")"
-    [[ -n "$accel" ]] && captured+=("$i:$accel")
-  done
-  # Assign the rebuilt entries into the caller-named array via a nameref created
-  # only now (after the source array has been fully read), avoiding aliasing.
-  local -n result="$resultname"
-  result=("${captured[@]}")
-  return 0
-}
-
 # configure_workspace_behavior — Apply settings shared by all numbered
 # workspace bindings without changing any numbered switch/move key. This is a
 # separate component so each numbered key can be selected independently.
@@ -265,6 +246,10 @@ configure_workspace_behavior() {
   # per-action detectors preserve installed state while removing stale metadata.
   if declare -F _isc_clear_receipt >/dev/null 2>&1; then
     _isc_clear_receipt workspace_keys
+    local legacy_index
+    for ((legacy_index = 1; legacy_index <= 9; legacy_index++)); do
+      _isc_clear_receipt "workspace_move_${legacy_index}"
+    done
   fi
   user_gsettings set org.gnome.mutter dynamic-workspaces false
   user_gsettings set org.gnome.desktop.wm.preferences num-workspaces "$WORKSPACE_COUNT"
@@ -286,69 +271,49 @@ configure_workspace_behavior() {
   user_gsettings set org.gnome.shell.window-switcher current-workspace-only true
 }
 
-# configure_workspace_binding ACTION INDEX — Capture and apply exactly one
-# numbered workspace key. ACTION is "switch" or "move" and INDEX is 1..9.
-# WORKSPACE_SWITCH_N / WORKSPACE_MOVE_N provide non-interactive overrides.
-configure_workspace_binding() {
-  local action="$1" index="$2" array_name key_prefix label env_prefix
-  case "$action" in
-    switch)
-      array_name=WORKSPACE_SWITCH_BINDINGS
-      key_prefix=switch-to-workspace-
-      label="switch to"
-      env_prefix=SWITCH
-      ;;
-    move)
-      array_name=WORKSPACE_MOVE_BINDINGS
-      key_prefix=move-to-workspace-
-      label="move window to"
-      env_prefix=MOVE
-      ;;
-    *)
-      msg "ERROR: unsupported workspace binding action: $action"
-      return 2
-      ;;
-  esac
+# configure_workspace_switch_binding INDEX — Apply one typed switch field and
+# its derived move binding (the shared move modifier plus the same base chord).
+configure_workspace_switch_binding() {
+  local index="$1" switch_accel move_accel
   [[ "$index" =~ ^[1-9]$ ]] || {
     msg "ERROR: workspace binding index must be between 1 and 9: $index"
     return 2
   }
 
-  local -n defaults="$array_name"
-  local default accel env_var="WORKSPACE_${env_prefix}_${index}"
-  default="$(hotkey_default_for_index "$index" "${defaults[@]}")"
-  ISC_HOTKEY_CONFLICTS_FN=hotkey_wm_conflict_candidates \
-    accel="$(isc_capture_hotkey "$env_var" "$default" "$label workspace $index")"
-
-  msg "Binding $label workspace $index to ${accel:-unassigned}"
-  set_gsettings_strv org.gnome.desktop.wm.keybindings "${key_prefix}${index}" "$accel"
+  switch_accel="$(workspace_switch_accelerator "$index")" || return 1
+  move_accel="$(workspace_move_accelerator "$index")" || return 1
+  msg "Binding workspace $index switch=${switch_accel:-unassigned} move=${move_accel:-unassigned}"
+  set_gsettings_strv org.gnome.desktop.wm.keybindings "switch-to-workspace-${index}" "$switch_accel"
+  set_gsettings_strv org.gnome.desktop.wm.keybindings "move-to-workspace-${index}" "$move_accel"
 
   # GNOME's screen-recording default shadows the default move-to-workspace-8
   # chord. Release it whenever that exact chord is assigned, even when the
   # screenshot component was not selected in the same installer run.
-  if [[ "${accel,,}" == "<super><shift>r" || "${accel,,}" == "<shift><super>r" ]]; then
+  if [[ "${move_accel,,}" == "<super><shift>r" || "${move_accel,,}" == "<shift><super>r" ]]; then
     set_gsettings_strv_if_key_exists org.gnome.shell.keybindings show-screen-recording-ui
   fi
 }
 
-configure_workspace_switch_1() { configure_workspace_binding switch 1; }
-configure_workspace_switch_2() { configure_workspace_binding switch 2; }
-configure_workspace_switch_3() { configure_workspace_binding switch 3; }
-configure_workspace_switch_4() { configure_workspace_binding switch 4; }
-configure_workspace_switch_5() { configure_workspace_binding switch 5; }
-configure_workspace_switch_6() { configure_workspace_binding switch 6; }
-configure_workspace_switch_7() { configure_workspace_binding switch 7; }
-configure_workspace_switch_8() { configure_workspace_binding switch 8; }
-configure_workspace_switch_9() { configure_workspace_binding switch 9; }
-configure_workspace_move_1() { configure_workspace_binding move 1; }
-configure_workspace_move_2() { configure_workspace_binding move 2; }
-configure_workspace_move_3() { configure_workspace_binding move 3; }
-configure_workspace_move_4() { configure_workspace_binding move 4; }
-configure_workspace_move_5() { configure_workspace_binding move 5; }
-configure_workspace_move_6() { configure_workspace_binding move 6; }
-configure_workspace_move_7() { configure_workspace_binding move 7; }
-configure_workspace_move_8() { configure_workspace_binding move 8; }
-configure_workspace_move_9() { configure_workspace_binding move 9; }
+configure_workspace_switch_1() { configure_workspace_switch_binding 1; }
+configure_workspace_switch_2() { configure_workspace_switch_binding 2; }
+configure_workspace_switch_3() { configure_workspace_switch_binding 3; }
+configure_workspace_switch_4() { configure_workspace_switch_binding 4; }
+configure_workspace_switch_5() { configure_workspace_switch_binding 5; }
+configure_workspace_switch_6() { configure_workspace_switch_binding 6; }
+configure_workspace_switch_7() { configure_workspace_switch_binding 7; }
+configure_workspace_switch_8() { configure_workspace_switch_binding 8; }
+configure_workspace_switch_9() { configure_workspace_switch_binding 9; }
+
+# configure_workspace_move_modifier — Rebuild all move bindings after the one
+# shared move modifier field changes.
+configure_workspace_move_modifier() {
+  local index move_accel
+  msg "Applying workspace move modifier: $(workspace_move_modifier)"
+  for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
+    move_accel="$(workspace_move_accelerator "$index")" || return 1
+    set_gsettings_strv org.gnome.desktop.wm.keybindings "move-to-workspace-${index}" "$move_accel"
+  done
+}
 
 # configure_workspace_keys — compatibility helper for callers that still want
 # to apply the complete workspace set in one call. New component manifests use
@@ -357,10 +322,7 @@ configure_workspace_keys() {
   local index
   configure_workspace_behavior
   for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
-    configure_workspace_binding switch "$index"
-  done
-  for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
-    configure_workspace_binding move "$index"
+    configure_workspace_switch_binding "$index"
   done
 }
 

@@ -40,16 +40,6 @@ WORKSPACE_SWITCH_BINDINGS=(
   "7:<Super>E"
   "8:<Super>R"
 )
-WORKSPACE_MOVE_BINDINGS=(
-  "1:<Super><Shift>z"
-  "2:<Super><Shift>x"
-  "3:<Super><Shift>c"
-  "4:<Super><Shift>a"
-  "5:<Super><Shift>q"
-  "6:<Super><Shift>w"
-  "7:<Super><Shift>e"
-  "8:<Super><Shift>r"
-)
 SUPER_ARROW_MOVE_BINDINGS=(
   "move-to-workspace-left:<Super><Shift>Left"
   "move-to-workspace-right:<Super><Shift>Right"
@@ -105,7 +95,8 @@ main() {
 # Listing/help must print only their own output (the master installer parses
 # --list-components); skip the trailing completion message for those.
 case "${1:-}" in
-  --list-components|--detect|--help|-h|--uninstall|--uninstall=*) component_main "$@"; exit $? ;;
+  --list-components|--list-configurable-components|--list-component-config-values|--configure-component|--configure-component=*|--detect|--help|-h|--uninstall|--uninstall=*)
+    component_main "$@"; exit $? ;;
 esac
 
 main "$@"

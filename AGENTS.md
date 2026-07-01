@@ -22,14 +22,15 @@ warning in real time which GNOME default a chosen accelerator would unbind; the
 read loop times out to the default after prolonged idle so it never blocks.
 
 Every hotkey also has an environment override for fully scripted runs
-(`SCREENSHOT_HOTKEY`, `WORKSPACE_SWITCH_<n>` / `WORKSPACE_MOVE_<n>`,
+(`SCREENSHOT_HOTKEY`, `WORKSPACE_SWITCH_<n>` / `WORKSPACE_MOVE_MODIFIER`,
 `MONITOR_MOVE_<n>`, `WINDOW_PLACEMENT_TILING_TRIGGER`).
 
-Every numbered workspace action appears as its own component row
-(`workspace_switch_1` … `workspace_switch_9` and `workspace_move_1` …
-`workspace_move_9`) in both the master `installation_scripts` menu and the
-standalone submenu. This one-row-per-action contract must not be collapsed back
-into a combined `workspace_keys` component.
+Every numbered switch appears as its own editable component row
+(`workspace_switch_1` … `workspace_switch_9`) in both the master and standalone
+menus. RIGHT opens the framework-owned typed field; the current `Super+W` style
+value appears in the row with an explicit rebind action. Window movement uses
+one `workspace_move_modifier` field (Shift by default), which is added to each
+switch chord and must never duplicate a modifier already present in a switch.
 
 Favourite (`f`) and Startup (`s`) are the app-selection menu's own toggles
 (owned by the shared `component_menu.sh` and applied while installing programs in

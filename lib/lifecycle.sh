@@ -33,50 +33,39 @@ detect_workspace_behavior() {
   [[ "$(run_as_target gsettings get org.gnome.mutter dynamic-workspaces 2>/dev/null)" == "false" ]] &&
     [[ "$(run_as_target gsettings get org.gnome.desktop.wm.preferences num-workspaces 2>/dev/null)" == "$WORKSPACE_COUNT" ]]
 }
-# detect_workspace_binding ACTION INDEX — Return success when the requested
-# numbered switch/move key has any assigned accelerator, including a custom one.
-detect_workspace_binding() {
-  local action="$1" index="$2" key_prefix actual
-  case "$action" in
-    switch) key_prefix=switch-to-workspace- ;;
-    move) key_prefix=move-to-workspace- ;;
-    *) return 2 ;;
-  esac
-  actual="$(run_as_target gsettings get org.gnome.desktop.wm.keybindings "${key_prefix}${index}" 2>/dev/null || true)"
-  [[ "$actual" != "[]" && "$actual" != "@as []" && -n "$actual" ]]
-}
 detect_workspace_keys() {
-  local entry idx binding
-  for entry in "${WORKSPACE_SWITCH_BINDINGS[@]}"; do
-    idx="${entry%%:*}"
-    binding="${entry#*:}"
-    hs_binding_matches org.gnome.desktop.wm.keybindings "switch-to-workspace-$idx" "$binding" || return 1
+  local index binding
+  for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
+    binding="$(workspace_switch_accelerator "$index")"
+    [[ -z "$binding" ]] && continue
+    hs_binding_matches org.gnome.desktop.wm.keybindings "switch-to-workspace-$index" "$binding" || return 1
   done
-  for entry in "${WORKSPACE_MOVE_BINDINGS[@]}"; do
-    idx="${entry%%:*}"
-    binding="${entry#*:}"
-    hs_binding_matches org.gnome.desktop.wm.keybindings "move-to-workspace-$idx" "$binding" || return 1
+  detect_workspace_move_modifier
+}
+detect_workspace_switch_binding() {
+  local index="$1" expected
+  expected="$(workspace_switch_accelerator "$index")"
+  [[ -n "$expected" ]] || return 1
+  hs_binding_matches org.gnome.desktop.wm.keybindings "switch-to-workspace-$index" "$expected"
+}
+detect_workspace_switch_1() { detect_workspace_switch_binding 1; }
+detect_workspace_switch_2() { detect_workspace_switch_binding 2; }
+detect_workspace_switch_3() { detect_workspace_switch_binding 3; }
+detect_workspace_switch_4() { detect_workspace_switch_binding 4; }
+detect_workspace_switch_5() { detect_workspace_switch_binding 5; }
+detect_workspace_switch_6() { detect_workspace_switch_binding 6; }
+detect_workspace_switch_7() { detect_workspace_switch_binding 7; }
+detect_workspace_switch_8() { detect_workspace_switch_binding 8; }
+detect_workspace_switch_9() { detect_workspace_switch_binding 9; }
+detect_workspace_move_modifier() {
+  local index expected
+  for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
+    expected="$(workspace_move_accelerator "$index")"
+    [[ -z "$expected" ]] && continue
+    hs_binding_matches org.gnome.desktop.wm.keybindings "move-to-workspace-$index" "$expected" || return 1
   done
   return 0
 }
-detect_workspace_switch_1() { detect_workspace_binding switch 1; }
-detect_workspace_switch_2() { detect_workspace_binding switch 2; }
-detect_workspace_switch_3() { detect_workspace_binding switch 3; }
-detect_workspace_switch_4() { detect_workspace_binding switch 4; }
-detect_workspace_switch_5() { detect_workspace_binding switch 5; }
-detect_workspace_switch_6() { detect_workspace_binding switch 6; }
-detect_workspace_switch_7() { detect_workspace_binding switch 7; }
-detect_workspace_switch_8() { detect_workspace_binding switch 8; }
-detect_workspace_switch_9() { detect_workspace_binding switch 9; }
-detect_workspace_move_1() { detect_workspace_binding move 1; }
-detect_workspace_move_2() { detect_workspace_binding move 2; }
-detect_workspace_move_3() { detect_workspace_binding move 3; }
-detect_workspace_move_4() { detect_workspace_binding move 4; }
-detect_workspace_move_5() { detect_workspace_binding move 5; }
-detect_workspace_move_6() { detect_workspace_binding move 6; }
-detect_workspace_move_7() { detect_workspace_binding move 7; }
-detect_workspace_move_8() { detect_workspace_binding move 8; }
-detect_workspace_move_9() { detect_workspace_binding move 9; }
 detect_monitor_window_hotkeys() { [ -d "$(hs_ext_dir monitor-window-hotkeys@local)" ]; }
 detect_window_placement_tiling() {
   [ -f "$TARGET_HOME/.config/systemd/user/window-placement-tiling.service" ] ||
@@ -128,36 +117,30 @@ uninstall_workspace_behavior() {
   run_as_target gsettings reset org.gnome.shell.app-switcher current-workspace-only 2>/dev/null || true
   run_as_target gsettings reset org.gnome.shell.window-switcher current-workspace-only 2>/dev/null || true
 }
-# uninstall_workspace_binding ACTION INDEX — Reset exactly one numbered
-# switch/move binding without changing any sibling workspace accelerator.
-uninstall_workspace_binding() {
-  local action="$1" index="$2" key_prefix
-  case "$action" in
-    switch) key_prefix=switch-to-workspace- ;;
-    move) key_prefix=move-to-workspace- ;;
-    *) return 2 ;;
-  esac
-  msg "Resetting ${action} workspace binding $index"
-  run_as_target gsettings reset org.gnome.desktop.wm.keybindings "${key_prefix}${index}" 2>/dev/null || true
+# uninstall_workspace_switch_binding INDEX — Reset one switch and its derived
+# move binding without changing any sibling workspace accelerator.
+uninstall_workspace_switch_binding() {
+  local index="$1"
+  msg "Resetting workspace switch/move binding $index"
+  run_as_target gsettings reset org.gnome.desktop.wm.keybindings "switch-to-workspace-${index}" 2>/dev/null || true
+  run_as_target gsettings reset org.gnome.desktop.wm.keybindings "move-to-workspace-${index}" 2>/dev/null || true
 }
-uninstall_workspace_switch_1() { uninstall_workspace_binding switch 1; }
-uninstall_workspace_switch_2() { uninstall_workspace_binding switch 2; }
-uninstall_workspace_switch_3() { uninstall_workspace_binding switch 3; }
-uninstall_workspace_switch_4() { uninstall_workspace_binding switch 4; }
-uninstall_workspace_switch_5() { uninstall_workspace_binding switch 5; }
-uninstall_workspace_switch_6() { uninstall_workspace_binding switch 6; }
-uninstall_workspace_switch_7() { uninstall_workspace_binding switch 7; }
-uninstall_workspace_switch_8() { uninstall_workspace_binding switch 8; }
-uninstall_workspace_switch_9() { uninstall_workspace_binding switch 9; }
-uninstall_workspace_move_1() { uninstall_workspace_binding move 1; }
-uninstall_workspace_move_2() { uninstall_workspace_binding move 2; }
-uninstall_workspace_move_3() { uninstall_workspace_binding move 3; }
-uninstall_workspace_move_4() { uninstall_workspace_binding move 4; }
-uninstall_workspace_move_5() { uninstall_workspace_binding move 5; }
-uninstall_workspace_move_6() { uninstall_workspace_binding move 6; }
-uninstall_workspace_move_7() { uninstall_workspace_binding move 7; }
-uninstall_workspace_move_8() { uninstall_workspace_binding move 8; }
-uninstall_workspace_move_9() { uninstall_workspace_binding move 9; }
+uninstall_workspace_switch_1() { uninstall_workspace_switch_binding 1; }
+uninstall_workspace_switch_2() { uninstall_workspace_switch_binding 2; }
+uninstall_workspace_switch_3() { uninstall_workspace_switch_binding 3; }
+uninstall_workspace_switch_4() { uninstall_workspace_switch_binding 4; }
+uninstall_workspace_switch_5() { uninstall_workspace_switch_binding 5; }
+uninstall_workspace_switch_6() { uninstall_workspace_switch_binding 6; }
+uninstall_workspace_switch_7() { uninstall_workspace_switch_binding 7; }
+uninstall_workspace_switch_8() { uninstall_workspace_switch_binding 8; }
+uninstall_workspace_switch_9() { uninstall_workspace_switch_binding 9; }
+uninstall_workspace_move_modifier() {
+  msg "Resetting all derived workspace move bindings"
+  local index
+  for ((index = 1; index <= WORKSPACE_UI_COUNT; index++)); do
+    run_as_target gsettings reset org.gnome.desktop.wm.keybindings "move-to-workspace-${index}" 2>/dev/null || true
+  done
+}
 uninstall_monitor_window_hotkeys() { msg "Removing monitor/window hotkeys extension"; hs_remove_extension monitor-window-hotkeys@local; }
 uninstall_window_placement_tiling() {
   msg "Removing window placement tiling service"
