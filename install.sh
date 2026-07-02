@@ -95,7 +95,7 @@ main() {
 # Listing/help must print only their own output (the master installer parses
 # --list-components); skip the trailing completion message for those.
 case "${1:-}" in
-  --list-components|--list-configurable-components|--list-component-config-values|--configure-component|--configure-component=*|--detect|--help|-h|--uninstall|--uninstall=*)
+  --list-components|--list-configurable-components|--list-component-config-values|--configure-component|--configure-component=*|--export-selection|--detect|--help|-h|--uninstall|--uninstall=*)
     component_main "$@"; exit $? ;;
 esac
 
