@@ -93,7 +93,9 @@ main() {
 }
 
 # Listing/help/export must print only their own output (the master installer
-# parses --list-components). Route readonly flags even when --config is argv[1].
+# parses --list-components, --list-configurable-components, and
+# --list-component-config-values). Route readonly flags even when --config is
+# argv[1].
 if isc_route_readonly_args "$@"; then exit $?; fi
 
 main "$@"
