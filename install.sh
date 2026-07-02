@@ -92,11 +92,8 @@ main() {
   msg "Ubuntu hotkey setup complete. Log out and back in before testing GNOME Shell extension changes."
 }
 
-# Listing/help must print only their own output (the master installer parses
-# --list-components); skip the trailing completion message for those.
-case "${1:-}" in
-  --list-components|--list-configurable-components|--list-component-config-values|--configure-component|--configure-component=*|--export-selection|--detect|--help|-h|--uninstall|--uninstall=*)
-    component_main "$@"; exit $? ;;
-esac
+# Listing/help/export must print only their own output (the master installer
+# parses --list-components). Route readonly flags even when --config is argv[1].
+if isc_route_readonly_args "$@"; then exit $?; fi
 
 main "$@"
