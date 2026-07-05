@@ -39,8 +39,6 @@ HOTKEYS_SETUP_CONFIG_DIR="$HOTKEYS_SETUP_DIR/configs"
 # created; WORKSPACE_UI_COUNT is how many rows the hotkey capture walks.
 : "${WORKSPACE_COUNT:=9}"
 : "${WORKSPACE_UI_COUNT:=9}"
-: "${MONITOR_WINDOW_HOTKEYS_EXTENSION_ID:=monitor-window-hotkeys@local}"
-: "${MONITOR_WINDOW_HOTKEYS_SOURCE_DIR:=$HOTKEYS_SETUP_CONFIG_DIR/gnome-shell/extensions/$MONITOR_WINDOW_HOTKEYS_EXTENSION_ID}"
 
 SCREENSHOT_UI_BINDINGS=("${SCREENSHOT_UI_BINDINGS[@]:-<Shift><Super>s}")
 SCREENSHOT_QUICK_BINDINGS=("${SCREENSHOT_QUICK_BINDINGS[@]:-Print}")
@@ -334,91 +332,12 @@ audit_keybindings() {
   run_as_target bash -lc "gsettings list-recursively | grep '<Super>s' || true"
 }
 
-# configure_monitor_window_hotkeys_extension — Install the local monitor/window
-# GNOME Shell extension into the target user's extensions directory, compile its
-# schema, apply its system bindings, and enable it. Skipped on X11 and when the
-# source directory is absent. Takes no arguments; reads
-# MONITOR_WINDOW_HOTKEYS_EXTENSION_ID and MONITOR_WINDOW_HOTKEYS_SOURCE_DIR.
-configure_monitor_window_hotkeys_extension() {
-  msg "Installing local GNOME Shell monitor/window hotkeys"
-
-  if [[ "$SESSION_TYPE" =~ ^(x11|xorg)$ ]]; then
-    msg "X11 session detected; skipping monitor/window hotkeys extension."
-    return 0
-  fi
-
-  local ext_id="$MONITOR_WINDOW_HOTKEYS_EXTENSION_ID"
-  local source_dir="$MONITOR_WINDOW_HOTKEYS_SOURCE_DIR"
-  local ext_dir="$TARGET_HOME/.local/share/gnome-shell/extensions/$ext_id"
-
-  if [ ! -d "$source_dir" ]; then
-    msg "Monitor/window hotkeys source not found at $source_dir; skipping."
-    return 0
-  fi
-
-  if is_root; then
-    install -d -o "$TARGET_USER" -g "$TARGET_USER" "$ext_dir"
-  else
-    install -d "$ext_dir"
-  fi
-  cp -a "$source_dir/." "$ext_dir/"
-  if is_root; then
-    chown -R "$TARGET_USER:$TARGET_USER" "$ext_dir"
-  fi
-  run_as_target chmod +x "$ext_dir/apply-system-bindings.sh"
-
-  if ! need_cmd glib-compile-schemas; then
-    apt_install libglib2.0-bin
-  fi
-  glib-compile-schemas "$ext_dir/schemas"
-
-  if ! run_as_target "$ext_dir/apply-system-bindings.sh"; then
-    echo "WARNING: monitor-window-hotkeys apply-system-bindings.sh failed; log out and back in, then re-run installer or apply-system-bindings.sh"
-    return 0
-  fi
-
-  configure_monitor_move_hotkeys "$ext_dir"
-
-  enable_shell_extension "$ext_id"
-  msg "Monitor/window hotkeys extension installed. Log out and back in before testing GNOME Shell extension changes."
-}
-
-# Default "move focused window to monitor N" accelerators. Monitors 1–3 ship a
-# default; the 4th is intentionally blank so the user assigns it. Matches the
-# extension's own schema defaults.
-MONITOR_MOVE_DEFAULTS=(
-  "1:<Alt><Super>x"
-  "2:<Alt><Super>z"
-  "3:<Alt><Super>c"
-  "4:"
-)
-: "${MONITOR_MOVE_COUNT:=4}"
-
-# configure_monitor_move_hotkeys — let the user press a hotkey for each of the
-# four "move window to monitor N" actions (defaults shown; 4th blank), then write
-# the captured accelerators onto the extension's own schema keys. Runs after
-# apply-system-bindings.sh has reset those keys to their defaults.
-# Args: $1 — installed extension directory (its schemas/ dir is used).
-configure_monitor_move_hotkeys() {
-  local ext_dir="$1" schema="org.gnome.shell.extensions.monitor-window-hotkeys"
-  local schemadir="$ext_dir/schemas" i default accel
-  for (( i=1; i<=MONITOR_MOVE_COUNT; i++ )); do
-    default="$(hotkey_default_for_index "$i" "${MONITOR_MOVE_DEFAULTS[@]}")"
-    ISC_HOTKEY_CONFLICTS_FN=hotkey_wm_conflict_candidates \
-      accel="$(isc_capture_hotkey "MONITOR_MOVE_${i}" "$default" "move window to monitor $i")"
-    if [[ -n "$accel" ]]; then
-      run_as_target gsettings --schemadir "$schemadir" set "$schema" \
-        "move-active-window-to-monitor-$i" "['${accel//\'/\\\'}']" 2>/dev/null || true
-    else
-      run_as_target gsettings --schemadir "$schemadir" set "$schema" \
-        "move-active-window-to-monitor-$i" "[]" 2>/dev/null || true
-    fi
-  done
-}
-
-# Automatic same-application window tiling and the pointer-driven window
-# move/resize hotkeys are no longer delegated from here: they are standalone,
-# directly-installed repositories (linux_automatic_window_tiling and
-# linux_hotkey_window_tools) that each configure their hotkeys through the same
-# shared isc_capture_hotkey engine. Their former configure_* delegators were
-# removed with the corresponding components.
+# Automatic same-application window tiling, the pointer-driven window move/resize
+# hotkeys, and the monitor/window movement + tiling extension are no longer
+# delegated from here: they are standalone, directly-installed repositories
+# (linux_automatic_window_tiling, linux_hotkey_window_tools, and
+# linux_monitor_window_hotkeys) that each configure their hotkeys through the same
+# shared isc_capture_hotkey engine. Their former configure_* delegators and the
+# bundled monitor-window-hotkeys@local extension were removed with the
+# corresponding components. The window placement tiling service (below) still
+# drives linux_monitor_window_hotkeys' D-Bus tiling methods at runtime.

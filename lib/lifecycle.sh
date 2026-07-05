@@ -2,16 +2,11 @@
 # lifecycle.sh - Detection and uninstall functions for linux_hotkey_setup.
 #
 # detect_* report live state for --detect; uninstall_* reverse each component:
-# reset keybindings, disable+remove the bundled monitor/window GNOME extension,
-# or disable+remove the window-placement-tiling user service (migrating away the
-# legacy ctrl-back-window-tiler unit).
+# reset keybindings, or disable+remove the window-placement-tiling user service
+# (migrating away the legacy ctrl-back-window-tiler unit). The monitor/window
+# movement + tiling extension now lives in the standalone
+# linux_monitor_window_hotkeys repository.
 
-hs_ext_dir() { printf '%s\n' "$TARGET_HOME/.local/share/gnome-shell/extensions/$1"; }
-hs_remove_extension() {
-  local uuid="$1"
-  run_as_target gnome-extensions disable "$uuid" 2>/dev/null || true
-  run_as_target rm -rf "$(hs_ext_dir "$uuid")"
-}
 hs_strv_is_single() {
   local actual="$1" expected="$2"
   [[ "${actual,,}" == "['${expected,,}']" ]]

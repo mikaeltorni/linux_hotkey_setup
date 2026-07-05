@@ -87,14 +87,6 @@ set_indexed_keybinding_map() {
   done
 }
 
-# enable_shell_extension — Add an extension UUID to org.gnome.shell
-# enabled-extensions (idempotent).
-# Args: $1 — extension UUID.
-enable_shell_extension() {
-  local ext_id="$1"
-  append_gsettings_list org.gnome.shell enabled-extensions "$ext_id"
-}
-
 # update_custom_keybindings — Register a custom media-keys keybinding path in the
 # custom-keybindings list (idempotent).
 # Args: $1 — custom keybinding dconf path.
