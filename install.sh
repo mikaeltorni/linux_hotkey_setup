@@ -3,8 +3,9 @@
 #
 # Components:
 #   - main(): Apply the configurable screenshot, individually selectable
-#     numbered-workspace switch/move actions, monitor/window movement, and
-#     window-placement-tiling hotkeys.
+#     numbered-workspace switch/move actions, and window-placement-tiling
+#     hotkeys. Monitor/window movement + tiling is a standalone repository
+#     (linux_monitor_window_hotkeys) whose D-Bus tiling this service drives.
 #
 # Usage:
 #   bash install.sh        # user-level setup; apt steps are skipped and reported

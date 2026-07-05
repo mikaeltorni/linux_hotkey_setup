@@ -6,7 +6,6 @@
 #   - configure_workspace_behavior(): Apply shared static-workspace behavior.
 #   - configure_workspace_switch_N(): Apply one typed switch field + derived move.
 #   - configure_workspace_move_modifier(): Rebuild moves from one modifier.
-#   - configure_monitor_window_hotkeys_extension(): Install monitor/window GNOME Shell hotkeys (4 monitors).
 #   - select_input_device(): Select a pointing device for window placement tiling.
 #   - configure_window_placement_tiling_service(): Install the window placement tiling service.
 #
