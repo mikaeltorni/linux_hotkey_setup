@@ -1,14 +1,5 @@
 {
   "components": {
-    "monitor_window_hotkeys": {
-      "config_value": "",
-      "favorite": 0,
-      "on": 1,
-      "startup": 0,
-      "sticky": 0,
-      "uninstall": 0,
-      "workspace": 0
-    },
     "screenshot": {
       "config_value": "",
       "favorite": 0,

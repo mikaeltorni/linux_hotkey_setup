@@ -66,7 +66,6 @@ detect_workspace_move_modifier() {
   done
   return 0
 }
-detect_monitor_window_hotkeys() { [ -d "$(hs_ext_dir monitor-window-hotkeys@local)" ]; }
 detect_window_placement_tiling() {
   [ -f "$TARGET_HOME/.config/systemd/user/window-placement-tiling.service" ] ||
     [ -f "$TARGET_HOME/.config/systemd/user/ctrl-back-window-tiler.service" ]
@@ -141,7 +140,6 @@ uninstall_workspace_move_modifier() {
     run_as_target gsettings reset org.gnome.desktop.wm.keybindings "move-to-workspace-${index}" 2>/dev/null || true
   done
 }
-uninstall_monitor_window_hotkeys() { msg "Removing monitor/window hotkeys extension"; hs_remove_extension monitor-window-hotkeys@local; }
 uninstall_window_placement_tiling() {
   msg "Removing window placement tiling service"
   local unit

@@ -40,7 +40,6 @@ ISC_COMPONENTS=(
   "workspace_switch_8|Switch to workspace 8|on|configure_workspace_switch_8|detect_workspace_switch_8|uninstall_workspace_switch_8|Switch to workspace|workspace_behavior|configure_workspace_switch_field_8|workspace_switch_status_8"
   "workspace_switch_9|Switch to workspace 9|off|configure_workspace_switch_9|detect_workspace_switch_9|uninstall_workspace_switch_9|Switch to workspace|workspace_behavior|configure_workspace_switch_field_9|workspace_switch_status_9"
   "workspace_move_modifier|Move window modifier|on|configure_workspace_move_modifier|detect_workspace_move_modifier|uninstall_workspace_move_modifier|Move window to workspace|workspace_behavior|configure_workspace_move_modifier_field|workspace_move_modifier_status"
-  "monitor_window_hotkeys|Monitor/window movement hotkeys extension|on|configure_monitor_window_hotkeys_extension|detect_monitor_window_hotkeys|uninstall_monitor_window_hotkeys|Window tools"
   "window_placement_tiling|Window placement tiling (Ctrl + mouse Back)|on|configure_window_placement_tiling_service|detect_window_placement_tiling|uninstall_window_placement_tiling|Window tools"
 )
 
