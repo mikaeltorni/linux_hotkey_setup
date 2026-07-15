@@ -83,7 +83,14 @@ Pointer-driven window move (`<Alt><Super>W` drag) and resize (`<Alt><Super>E`
 center scaling) now live in the standalone `linux_hotkey_window_tools`
 repository, installed directly by the master installer.
 
-Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by a separate D-Bus service (ctrl_back_tile_right.py); its modifier and mouse button are configurable via the capture UI. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
+Half-screen tiling defaults: among arrow keys only `<Super>Up` tiles (top half, in
+`linux_monitor_window_hotkeys`); bottom/left/right halves use `Ctrl+Super` letter
+bindings (`W`/`C`/`Right`). The window-placement-tiling trigger (default Ctrl +
+mouse Back) is handled by a separate D-Bus service (ctrl_back_tile_right.py);
+its modifier and mouse button are configurable via the capture UI.
+`apply-system-bindings.sh` in `linux_monitor_window_hotkeys` removes only the
+`<Super>Up` conflicts (GNOME maximize and Tiling Assistant `tile-maximize`) so
+that shortcut reaches top-half tiling.
 
 Automatic same-application tiling (`linux_automatic_window_tiling`) and
 pointer-driven move/resize (`linux_hotkey_window_tools`) are standalone,
