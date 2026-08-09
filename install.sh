@@ -77,9 +77,12 @@ main() {
   SELECTED_FEATURES="${FEATURES:-}"
 
   if [ -n "$SELECTED_FEATURES" ]; then
+    # The component runtime already splits comma-separated ids, so the whole
+    # FEATURES list is forwarded verbatim; passing only the first element would
+    # silently drop every other requested feature.
     IFS="," read -ra FEATURE_ARRAY <<< "$SELECTED_FEATURES"
     msg "Feature filter active: ${FEATURE_ARRAY[*]}"
-    component_main "--select=${FEATURE_ARRAY[0]:-}"
+    component_main "--select=$SELECTED_FEATURES"
   else
     # No explicit selection: component_main shows the interactive component menu
     # on a real terminal, otherwise installs the default-on components. Hotkeys
