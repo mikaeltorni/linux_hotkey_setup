@@ -58,10 +58,10 @@ bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_hel
 - `lib/hotkeys_setup.sh` - shared implementation; each hotkey is captured via the shared `isc_capture_hotkey` engine.
 - `lib/ctrl_back_tiler.sh` - pointing-device selection and window-placement-tiling user-service installation (configurable modifier + mouse-button trigger).
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
-- `lhs-tools` (Rust, `src/`) - parses and serializes GSettings string-array values for the installer.
+- `lhs-tools` (Rust, `src/`) - GSettings string-array helper (`append`/`remove`) and the window-placement tiler (`tiler` / `list-pointers`).
 - `lib/lifecycle.sh` - per-component detect/uninstall functions.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
-- `configs/window-hotkeys/` - window-placement-tiling service script and centralized logger.
+- `src/tiler.rs` - window-placement-tiling service (modifier + mouse-button half-tiler) and pointer listing.
 - `tests/` - simulation tests.
 
 ## Configuration
@@ -85,7 +85,7 @@ Pointer-driven window move (`<Alt><Super>W` drag) and resize (`<Alt><Super>E`
 center scaling) now live in the standalone `linux_hotkey_window_tools`
 repository, installed directly by the master installer.
 
-Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by a separate D-Bus service (ctrl_back_tile_right.py); its modifier and mouse button are configurable via the capture UI. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
+Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by `lhs-tools tiler`; its modifier and mouse button are configurable via the capture UI. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
 
 Automatic same-application tiling (`linux_automatic_window_tiling`) and
 pointer-driven move/resize (`linux_hotkey_window_tools`) are standalone,

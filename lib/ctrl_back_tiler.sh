@@ -8,57 +8,15 @@
 # isc_capture_hotkey engine for the configurable trigger.
 
 # select_input_device — Detect pointing devices that expose a back button and
-# choose one for the Ctrl+Back tiler. Prompts interactively; auto-selects the
-# first device in non-interactive runs. Exports SELECTED_INPUT_DEVICE and
-# SELECTED_INPUT_DEVICE_NAME. Takes no arguments. Returns non-zero when no
-# eligible device is found so the caller can skip the tiler service.
+# choose one for the Ctrl+Back tiler. Uses `lhs-tools list-pointers`. Prompts
+# interactively; auto-selects the first device in non-interactive runs. Exports
+# SELECTED_INPUT_DEVICE and SELECTED_INPUT_DEVICE_NAME. Takes no arguments.
+# Returns non-zero when no eligible device is found so the caller can skip the
+# tiler service.
 select_input_device() {
   msg "Detecting pointing devices with back buttons"
   local device_list
-  device_list="$(python3 -c '
-from evdev import InputDevice, ecodes, list_devices
-from pathlib import Path
-
-BACK_CODES = {ecodes.KEY_BACK, ecodes.BTN_SIDE, ecodes.BTN_EXTRA}
-POINTER_RELS = {ecodes.REL_X, ecodes.REL_Y}
-
-def event_sort_key(path):
-    suffix = path.rsplit("event", 1)[-1]
-    return (0, int(suffix)) if suffix.isdigit() else (1, path)
-
-def stable_device_path(path):
-    resolved = Path(path).resolve()
-    by_id = Path("/dev/input/by-id")
-    if by_id.is_dir():
-        aliases = [
-            alias
-            for alias in by_id.iterdir()
-            if "event-mouse" in alias.name and alias.resolve() == resolved
-        ]
-        if aliases:
-            return str(sorted(aliases)[0])
-    return path
-
-devices = []
-for path in sorted(list_devices(), key=event_sort_key):
-    try:
-        dev = InputDevice(path)
-    except OSError:
-        continue
-    caps = dev.capabilities(absinfo=False)
-    keys = set(caps.get(ecodes.EV_KEY, []))
-    rels = set(caps.get(ecodes.EV_REL, []))
-    if not (rels & POINTER_RELS) or not (keys & BACK_CODES):
-        dev.close()
-        continue
-    if "Keychron" in dev.name or "ctrl-back-window-tiler" in dev.name:
-        dev.close()
-        continue
-    devices.append((stable_device_path(dev.path), dev.name))
-    dev.close()
-for path, name in devices:
-    print(f"{path}|{name}")
-' 2>/dev/null)"
+  device_list="$(lhs_bin list-pointers 2>/dev/null || true)"
   if [ -z "$device_list" ]; then
     msg "No pointing devices with back buttons detected; tiler service will be skipped."
     return 1
@@ -108,7 +66,8 @@ WINDOW_PLACEMENT_TILING_LEGACY_SERVICE="ctrl-back-window-tiler.service"
 # then the mouse Back/Forward button, or (when the mouse has no side buttons)
 # the keyboard B/F stand-ins. Pins the unit to the device chosen by
 # select_input_device and migrates any legacy ctrl-back-window-tiler unit.
-# Takes no arguments; reads SELECTED_INPUT_DEVICE and HOTKEYS_SETUP_CONFIG_DIR.
+# Deploys `lhs-tools` and starts `lhs-tools tiler`. Takes no arguments; reads
+# SELECTED_INPUT_DEVICE.
 configure_window_placement_tiling_service() {
   msg "Installing window placement tiling service"
 
@@ -135,15 +94,13 @@ configure_window_placement_tiling_service() {
   [[ -z "$button" || "$button" == "$modifier" ]] && button="$WINDOW_PLACEMENT_TILING_BUTTON_DEFAULT"
   msg "Window placement tiling trigger: ${modifier} + ${button}"
 
-  local script_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/ctrl_back_tile_right.py"
-  local logging_source="$HOTKEYS_SETUP_CONFIG_DIR/window-hotkeys/hotkey_logging_utils.py"
-  local script_target="$TARGET_HOME/.local/bin/ctrl_back_tile_right.py"
-  local logging_target="$TARGET_HOME/.local/bin/hotkey_logging_utils.py"
-  local service_target="$TARGET_HOME/.config/systemd/user/$WINDOW_PLACEMENT_TILING_SERVICE"
-  if [ ! -f "$script_source" ] || [ ! -f "$logging_source" ]; then
-    msg "Window placement tiling service source files missing; skipping."
+  if ! ensure_lhs_bin; then
+    msg "lhs-tools binary missing; skipping window placement tiling service."
     return 0
   fi
+  local bin_source="$LHS_BIN"
+  local bin_target="$TARGET_HOME/.local/bin/lhs-tools"
+  local service_target="$TARGET_HOME/.config/systemd/user/$WINDOW_PLACEMENT_TILING_SERVICE"
 
   # Migrate any legacy ctrl-back-window-tiler unit to the renamed service.
   local legacy_target="$TARGET_HOME/.config/systemd/user/$WINDOW_PLACEMENT_TILING_LEGACY_SERVICE"
@@ -153,14 +110,15 @@ configure_window_placement_tiling_service() {
   fi
 
   local device_filter="${SELECTED_INPUT_DEVICE:-}"
-  run_as_target mkdir -p "$(dirname "$service_target")"
+  run_as_target mkdir -p "$(dirname "$service_target")" "$(dirname "$bin_target")"
   if is_root; then
-    install -D -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$script_source" "$script_target"
-    install -D -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" "$logging_source" "$logging_target"
+    install -D -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$bin_source" "$bin_target"
   else
-    install -D -m 0755 "$script_source" "$script_target"
-    install -D -m 0644 "$logging_source" "$logging_target"
+    install -D -m 0755 "$bin_source" "$bin_target"
   fi
+  run_as_target rm -f \
+    "$TARGET_HOME/.local/bin/ctrl_back_tile_right.py" \
+    "$TARGET_HOME/.local/bin/hotkey_logging_utils.py"
   run_as_target tee "$service_target" >/dev/null <<EOF
 [Unit]
 Description=Window placement tiling (modifier + mouse button half-tiler)
@@ -169,7 +127,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=$script_target
+ExecStart=$bin_target tiler
 Restart=on-failure
 RestartSec=2
 Environment=CTRL_BACK_TILE_DEVICE=${device_filter:-}

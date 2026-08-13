@@ -113,8 +113,7 @@ pub fn format_strv(values: &[String]) -> String {
 ///
 /// # Returns
 /// `0` after printing the serialized array. `2` on usage errors.
-pub fn run_cli() -> i32 {
-    let args: Vec<String> = env::args().skip(1).collect();
+pub fn run(args: &[String]) -> i32 {
     if args.len() != 2 || (args[0] != "append" && args[0] != "remove") {
         logging::error("Usage: lhs-tools append|remove <value>");
         eprintln!("Usage: lhs-tools append|remove <value>");

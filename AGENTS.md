@@ -40,7 +40,7 @@ stand in for the mouse Forward/Back buttons.
 
 ## Restarting the window placement tiling service after code changes
 
-If you modify `configs/window-hotkeys/ctrl_back_tile_right.py`, restart the
+If you modify `src/tiler.rs` (the `lhs-tools tiler` service), restart the
 service so changes take effect:
 
 ```bash
@@ -54,7 +54,7 @@ mouse Back) to pick up your edits. The installer migrates the legacy
 ## GNOME Shell reload requirements
 
 A GNOME Shell reload (`Alt+F2 r` on X11, or logout/login) is **not** needed when:
-- Only `ctrl_back_tile_right.py` changes — it runs as a systemd user service, independent of GNOME Shell.
+- Only `lhs-tools tiler` / `src/tiler.rs` changes — it runs as a systemd user service, independent of GNOME Shell.
 - Only `apply-system-bindings.sh` or other installer-side gsettings change — these apply immediately on the next install run.
 
 A reload **is** needed only if you modify the GNOME Shell extension itself:
