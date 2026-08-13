@@ -411,8 +411,9 @@ def test_monitor_window_extension_no_longer_bundled_here():
 
 def test_gsettings_list_mutation_uses_extracted_helper():
     helpers = (ROOT_DIR / "lib/gsettings_helpers.sh").read_text(encoding="utf-8")
-    assert "gsettings_strv.py" in helpers
-    assert "python3 - <<'PY'" not in helpers
+    assert "lhs_bin" in helpers
+    assert "gsettings_strv.py" not in helpers
+    assert "python3" not in helpers
 
 
 def test_numbered_workspace_popup_moved_to_workspaces_repo():

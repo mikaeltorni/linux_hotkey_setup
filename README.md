@@ -42,6 +42,7 @@ After installation, log out and back in before testing GNOME Shell extension cha
 Run tests:
 
 ```bash
+cargo test
 python3 -m pytest tests -q
 ```
 
@@ -57,6 +58,7 @@ bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_hel
 - `lib/hotkeys_setup.sh` - shared implementation; each hotkey is captured via the shared `isc_capture_hotkey` engine.
 - `lib/ctrl_back_tiler.sh` - pointing-device selection and window-placement-tiling user-service installation (configurable modifier + mouse-button trigger).
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
+- `lhs-tools` (Rust, `src/`) - parses and serializes GSettings string-array values for the installer.
 - `lib/lifecycle.sh` - per-component detect/uninstall functions.
 - `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
 - `configs/window-hotkeys/` - window-placement-tiling service script and centralized logger.
@@ -103,6 +105,7 @@ Before deploying:
 
 ```bash
 bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+cargo test
 python3 -m pytest tests -q
 ```
 

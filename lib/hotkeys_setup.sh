@@ -78,6 +78,8 @@ log() {
   printf '[%s] %s\n' "$1" "$2" >&2
 }
 
+# shellcheck source=lhs_bin.sh
+source "$HOTKEYS_SETUP_LIB_DIR/lhs_bin.sh"
 # shellcheck source=gsettings_helpers.sh
 source "$HOTKEYS_SETUP_LIB_DIR/gsettings_helpers.sh"
 # shellcheck source=ctrl_back_tiler.sh
