@@ -1,13 +1,21 @@
-//! `lhs-tools` — installer-facing GSettings string-array helper.
+//! `lhs-tools` — installer helpers and the window-placement tiler.
 //!
 //! ```text
 //! CURRENT="['a']" lhs-tools append monitor-window-hotkeys@local
-//! CURRENT="['a', 'x']" lhs-tools remove x
+//! lhs-tools list-pointers
+//! lhs-tools tiler
 //! ```
 
 mod gsettings_strv;
 mod logging;
+mod tiler;
 
 fn main() {
-    std::process::exit(gsettings_strv::run_cli());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let code = match args.first().map(String::as_str) {
+        Some("tiler") | Some("list-pointers") => tiler::run_cli(&args),
+        Some("append") | Some("remove") => gsettings_strv::run(&args),
+        _ => gsettings_strv::run(&args),
+    };
+    std::process::exit(code);
 }

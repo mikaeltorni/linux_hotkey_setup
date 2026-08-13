@@ -143,4 +143,8 @@ uninstall_window_placement_tiling() {
     run_as_target rm -f "$TARGET_HOME/.config/systemd/user/$unit"
   done
   run_as_target systemctl --user daemon-reload 2>/dev/null || true
+  run_as_target rm -f \
+    "$TARGET_HOME/.local/bin/lhs-tools" \
+    "$TARGET_HOME/.local/bin/ctrl_back_tile_right.py" \
+    "$TARGET_HOME/.local/bin/hotkey_logging_utils.py"
 }

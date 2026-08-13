@@ -6,7 +6,7 @@ Components:
   - test_exports_expected_hotkey_functions(): Verifies the public helper API.
   - test_workspace_and_screenshot_bindings_are_applied(): Simulates GSettings
     calls without modifying the host system.
-  - test_ctrl_back_assets_exist(): Verifies the Ctrl+Back tiler assets remain
+  - test_ctrl_back_assets_exist(): Verifies the Rust tiler sources remain
     here after the monitor/window extension moved to its own repository.
 
 Usage:
@@ -394,8 +394,10 @@ def test_ctrl_back_assets_exist():
     linux_monitor_window_hotkeys repository; only the Ctrl+Back tiler service
     (which drives that extension's D-Bus tiling) stays here.
     """
-    assert (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py").is_file()
-    assert (ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py").is_file()
+    assert (ROOT_DIR / "src" / "tiler.rs").is_file()
+    assert (ROOT_DIR / "src" / "main.rs").is_file()
+    assert not (ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py").exists()
+    assert not (ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py").exists()
 
 
 def test_monitor_window_extension_no_longer_bundled_here():
@@ -436,7 +438,7 @@ def test_ctrl_back_device_selection_uses_first_device_non_interactively():
                 "TARGET_USER=$(id -un)",
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
-                "python3() {",
+                "lhs_bin() {",
                 "  printf '%s\\n' '/dev/input/by-id/first-event-mouse|First Mouse' '/dev/input/by-id/second-event-mouse|Second Mouse'",
                 "}",
                 "select_input_device",
@@ -462,7 +464,7 @@ def test_ctrl_back_device_selection_fails_when_no_device_is_detected():
                 "TARGET_USER=$(id -un)",
                 "TARGET_HOME=/tmp/ubuntu-hotkeys-test-home",
                 "source lib/hotkeys_setup.sh",
-                "python3() { return 0; }",
+                "lhs_bin() { return 0; }",
                 "if select_input_device; then",
                 "  exit 1",
                 "fi",
@@ -475,7 +477,7 @@ def test_ctrl_back_device_selection_fails_when_no_device_is_detected():
 
 
 def test_window_placement_tiling_installs_script_and_configured_trigger():
-    """Tiling setup installs its script/logger/service with the captured trigger."""
+    """Tiling setup installs lhs-tools and the service with the captured trigger."""
     with tempfile.TemporaryDirectory() as td:
         home = Path(td) / "home"
         home.mkdir()
@@ -490,6 +492,11 @@ def test_window_placement_tiling_installs_script_and_configured_trigger():
                     "source lib/hotkeys_setup.sh",
                     "calls=$TARGET_HOME/systemd.log",
                     "SELECTED_INPUT_DEVICE=/dev/input/by-id/primary-event-mouse",
+                    "ensure_lhs_bin() {",
+                    "  LHS_BIN=$TARGET_HOME/stub-lhs-tools",
+                    "  printf '#!/bin/sh\\n' > \"$LHS_BIN\"",
+                    "  chmod +x \"$LHS_BIN\"",
+                    "}",
                     "run_as_target() { \"$@\"; }",
                     "is_root() { return 1; }",
                     "reload_systemd_daemon() { printf 'reload\\n' >> \"$calls\"; }",
@@ -500,7 +507,7 @@ def test_window_placement_tiling_installs_script_and_configured_trigger():
         )
 
         assert proc.returncode == 0, proc.stderr
-        script_target = home / ".local" / "bin" / "ctrl_back_tile_right.py"
+        bin_target = home / ".local" / "bin" / "lhs-tools"
         service_target = (
             home
             / ".config"
@@ -511,16 +518,11 @@ def test_window_placement_tiling_installs_script_and_configured_trigger():
         service = service_target.read_text(encoding="utf-8")
         calls = (home / "systemd.log").read_text(encoding="utf-8").splitlines()
 
-        assert script_target.read_bytes() == (
-            ROOT_DIR / "configs" / "window-hotkeys" / "ctrl_back_tile_right.py"
-        ).read_bytes()
-        logging_target = home / ".local" / "bin" / "hotkey_logging_utils.py"
-        assert logging_target.read_bytes() == (
-            ROOT_DIR / "configs" / "window-hotkeys" / "hotkey_logging_utils.py"
-        ).read_bytes()
-        assert not logging_target.stat().st_mode & 0o111
-        assert script_target.stat().st_mode & 0o111
-        assert f"ExecStart={script_target}" in service
+        assert bin_target.is_file()
+        assert bin_target.stat().st_mode & 0o111
+        assert not (home / ".local" / "bin" / "ctrl_back_tile_right.py").exists()
+        assert not (home / ".local" / "bin" / "hotkey_logging_utils.py").exists()
+        assert f"ExecStart={bin_target} tiler" in service
         assert (
             "Environment=CTRL_BACK_TILE_DEVICE="
             "/dev/input/by-id/primary-event-mouse"
@@ -548,6 +550,11 @@ def test_window_placement_tiling_migrates_legacy_unit():
                     "TARGET_USER=$(id -un)",
                     "SELECTED_INPUT_DEVICE=/dev/input/by-id/primary-event-mouse",
                     "source lib/hotkeys_setup.sh",
+                    "ensure_lhs_bin() {",
+                    "  LHS_BIN=$TARGET_HOME/stub-lhs-tools",
+                    "  printf '#!/bin/sh\\n' > \"$LHS_BIN\"",
+                    "  chmod +x \"$LHS_BIN\"",
+                    "}",
                     "run_as_target() { \"$@\"; }",
                     "is_root() { return 1; }",
                     "reload_systemd_daemon() { :; }",
@@ -578,7 +585,7 @@ def test_window_placement_tiling_skips_cleanly_when_no_device():
                     f"TARGET_HOME={str(home)!r}",
                     "TARGET_USER=$(id -un)",
                     "source lib/hotkeys_setup.sh",
-                    "python3() { return 0; }",
+                    "lhs_bin() { return 0; }",
                     "configure_window_placement_tiling_service",
                 ]
             )
