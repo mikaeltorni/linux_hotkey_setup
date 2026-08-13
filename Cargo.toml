@@ -1,0 +1,11 @@
+[package]
+name = "lhs-tools"
+version = "0.1.0"
+edition = "2021"
+description = "GSettings string-array helper for linux-hotkey-setup"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "lhs-tools"
+path = "src/main.rs"

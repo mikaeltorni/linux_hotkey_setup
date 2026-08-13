@@ -53,22 +53,22 @@ set_gsettings_strv_if_key_exists() {
 }
 
 # append_gsettings_list — Append a value to a string-array key, de-duplicating
-# via gsettings_strv.py so re-runs stay idempotent.
+# via lhs-tools so re-runs stay idempotent.
 # Args: $1 — schema id; $2 — key name; $3 — value to append.
 append_gsettings_list() {
   local schema="$1" key="$2" value="$3" current new_value
   current="$(user_gsettings get "$schema" "$key" 2>/dev/null || printf '[]')"
-  new_value="$(CURRENT="$current" python3 "$HOTKEYS_SETUP_LIB_DIR/gsettings_strv.py" append "$value")"
+  new_value="$(CURRENT="$current" lhs_bin append "$value")"
   user_gsettings set "$schema" "$key" "$new_value"
 }
 
 # remove_gsettings_list — Remove every occurrence of a value from a string-array
-# key via gsettings_strv.py.
+# key via lhs-tools.
 # Args: $1 — schema id; $2 — key name; $3 — value to remove.
 remove_gsettings_list() {
   local schema="$1" key="$2" value="$3" current new_value
   current="$(user_gsettings get "$schema" "$key" 2>/dev/null || printf '[]')"
-  new_value="$(CURRENT="$current" python3 "$HOTKEYS_SETUP_LIB_DIR/gsettings_strv.py" remove "$value")"
+  new_value="$(CURRENT="$current" lhs_bin remove "$value")"
   user_gsettings set "$schema" "$key" "$new_value"
 }
 
