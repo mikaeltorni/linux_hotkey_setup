@@ -95,6 +95,7 @@ configurable hotkeys (chosen through the same shared capture engine).
 ## Troubleshooting
 
 - If the window-placement-tiling service cannot find a pointing device with a browser-back button, it skips the service setup.
+- The window-placement-tiling service discards each forwarded event after emission and runs with a 64 MiB systemd memory ceiling, preventing a malformed or amplified input stream from exhausting system RAM.
 - If monitor/window hotkeys do not respond immediately, log out and back in so GNOME Shell loads the updated extension code.
 - If `Shift+Super+R` triggers GNOME's screen recording instead of move-to-workspace-8, the installer's unbinding of `org.gnome.shell.keybindings show-screen-recording-ui` has not taken effect yet. Re-run `bash install.sh`. This is a `gsettings` keybinding change, which GNOME Shell applies live, so no Shell reload is needed. Verify with `gsettings get org.gnome.shell.keybindings show-screen-recording-ui` returning `@as []`.
 - If GSettings schema writes fail for the local extension, run `glib-compile-schemas` on the extension `schemas/` directory and retry the installer.

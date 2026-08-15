@@ -124,12 +124,17 @@ configure_window_placement_tiling_service() {
 Description=Window placement tiling (modifier + mouse button half-tiler)
 After=graphical-session.target
 PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 ExecStart=$bin_target tiler
 Restart=on-failure
 RestartSec=2
+MemoryHigh=32M
+MemoryMax=64M
+MemorySwapMax=0
 Environment=CTRL_BACK_TILE_DEVICE=${device_filter:-}
 Environment=WINDOW_PLACEMENT_TILE_MODIFIER=${modifier}
 Environment=WINDOW_PLACEMENT_TILE_BUTTON=${button}
