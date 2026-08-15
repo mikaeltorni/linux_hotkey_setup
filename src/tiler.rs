@@ -378,6 +378,11 @@ fn handle_live_event(
         tile_right();
     }
     if logic.forwarded.len() > forwarded_before {
+        // The vector is an observable decision log for the pure logic tests,
+        // not a runtime event queue. Drop the live decision immediately after
+        // observing it so high-rate pointer input cannot grow the process
+        // without bound.
+        logic.forwarded.truncate(forwarded_before);
         if let Some(ui) = virtual_dev.as_mut() {
             let ev = InputEvent::new(event.event_type(), code, value);
             let syn = InputEvent::new(EventType::SYNCHRONIZATION, 0, 0);
@@ -628,5 +633,26 @@ mod tests {
             tiler.forwarded,
             vec![(EV_KEY, BTN_SIDE, 1), (EV_KEY, BTN_SIDE, 0)]
         );
+    }
+
+    #[test]
+    fn live_forwarding_does_not_retain_processed_pointer_events() {
+        let mut tiler = TilerLogic::default();
+        tiler
+            .forward_codes
+            .insert((EventType::RELATIVE.0, RelativeAxisType::REL_X.0));
+        let mut virtual_dev = None;
+
+        for _ in 0..10_000 {
+            handle_live_event(
+                &mut tiler,
+                &mut virtual_dev,
+                "/dev/input/mouse",
+                true,
+                InputEvent::new(EventType::RELATIVE, RelativeAxisType::REL_X.0, 1),
+            );
+        }
+
+        assert!(tiler.forwarded.is_empty());
     }
 }

@@ -530,6 +530,11 @@ def test_window_placement_tiling_installs_script_and_configured_trigger():
         # Default captured trigger (non-interactive) is Ctrl + mouse Back.
         assert "Environment=WINDOW_PLACEMENT_TILE_MODIFIER=Control" in service
         assert "Environment=WINDOW_PLACEMENT_TILE_BUTTON=BTN_BACK" in service
+        assert "StartLimitIntervalSec=60" in service
+        assert "StartLimitBurst=3" in service
+        assert "MemoryHigh=32M" in service
+        assert "MemoryMax=64M" in service
+        assert "MemorySwapMax=0" in service
         assert calls == ["reload", "enable window-placement-tiling.service"]
 
 
