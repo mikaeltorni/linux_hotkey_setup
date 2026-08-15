@@ -37,6 +37,7 @@ const DBUS_BUS_NAME: &str = "org.gnome.shell.extensions.MonitorWindowHotkeys";
 const DBUS_OBJECT_PATH: &str = "/org/gnome/shell/extensions/monitor_window_hotkeys";
 const DBUS_INTERFACE: &str = "org.gnome.shell.extensions.MonitorWindowHotkeys";
 const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_FORWARD_PACKET_EVENTS: usize = 256;
 
 /// Sort event device paths by their numeric `eventN` suffix when available.
 pub fn input_device_sort_key(path: &str) -> (u8, String) {
@@ -367,8 +368,8 @@ fn handle_live_event(
     let event_type = event.event_type().0;
     let code = event.code();
     let value = event.value();
+    let packet_boundary = event.event_type() == EventType::SYNCHRONIZATION && code == 0;
     let tiles_before = logic.tile_calls;
-    let forwarded_before = logic.forwarded.len();
     if event.event_type() == EventType::KEY {
         logic.handle_key(path, grabbed, code, value);
     } else {
@@ -377,16 +378,18 @@ fn handle_live_event(
     if logic.tile_calls > tiles_before {
         tile_right();
     }
-    if logic.forwarded.len() > forwarded_before {
-        // The vector is an observable decision log for the pure logic tests,
-        // not a runtime event queue. Drop the live decision immediately after
-        // observing it so high-rate pointer input cannot grow the process
-        // without bound.
-        logic.forwarded.truncate(forwarded_before);
+    if let Some(packet) = take_forwarded_packet(logic, packet_boundary) {
         if let Some(ui) = virtual_dev.as_mut() {
-            let ev = InputEvent::new(event.event_type(), code, value);
-            let syn = InputEvent::new(EventType::SYNCHRONIZATION, 0, 0);
-            if ui.emit(&[ev, syn]).is_err() {
+            let events: Vec<InputEvent> = packet
+                .into_iter()
+                .map(|(event_type, code, value)| {
+                    InputEvent::new(EventType(event_type), code, value)
+                })
+                .collect();
+            // evdev::VirtualDevice::emit appends exactly one SYN_REPORT. Feed it
+            // the physical packet without its boundary so REL_X/REL_Y remain
+            // atomic and the virtual device does not generate duplicate SYNs.
+            if ui.emit(&events).is_err() {
                 logging::service(
                     "ERROR",
                     format!("could not forward input event {event_type}/{code}"),
@@ -396,6 +399,24 @@ fn handle_live_event(
             }
         }
     }
+}
+
+/// Take a completed physical packet, with a bounded fallback for malformed input.
+fn take_forwarded_packet(
+    logic: &mut TilerLogic,
+    packet_boundary: bool,
+) -> Option<Vec<(u16, u16, i32)>> {
+    if logic.forwarded.is_empty()
+        || (!packet_boundary && logic.forwarded.len() < MAX_FORWARD_PACKET_EVENTS)
+    {
+        return None;
+    }
+    Some(std::mem::take(&mut logic.forwarded))
+}
+
+/// Return whether a physical device should supply modifier state to the tiler.
+fn should_watch_ctrl_device(physical_path: Option<&str>, supports_modifier: bool) -> bool {
+    supports_modifier && physical_path.is_some_and(|path| !path.is_empty())
 }
 
 fn rescan(
@@ -442,12 +463,17 @@ fn rescan(
             continue;
         }
         let keys = device.supported_keys();
-        let watches_ctrl = keys.is_some_and(|k| {
+        let supports_modifier = keys.is_some_and(|k| {
             logic
                 .ctrl_codes
                 .iter()
                 .any(|code| k.iter().any(|key| key.code() == *code))
         });
+        // Uinput relays (including Phrase Automation's short-lived section
+        // devices) have no physical path. Watching them duplicates physical
+        // modifier input and makes their normal teardown churn the grabbed
+        // pointer, so modifier monitoring is restricted to physical devices.
+        let watches_ctrl = should_watch_ctrl_device(device.physical_path(), supports_modifier);
         let is_pointer = path_s == *pointer_path;
         if !watches_ctrl && !is_pointer {
             continue;
@@ -653,6 +679,41 @@ mod tests {
             );
         }
 
+        assert!(tiler.forwarded.len() < MAX_FORWARD_PACKET_EVENTS);
+    }
+
+    #[test]
+    fn physical_motion_is_flushed_once_at_syn_report() {
+        let mut tiler = TilerLogic::default();
+        tiler
+            .forward_codes
+            .insert((EventType::RELATIVE.0, RelativeAxisType::REL_X.0));
+        tiler
+            .forward_codes
+            .insert((EventType::RELATIVE.0, RelativeAxisType::REL_Y.0));
+
+        tiler.handle_other(true, EventType::RELATIVE.0, RelativeAxisType::REL_X.0, 4);
+        assert!(take_forwarded_packet(&mut tiler, false).is_none());
+        tiler.handle_other(true, EventType::RELATIVE.0, RelativeAxisType::REL_Y.0, -2);
+        assert!(take_forwarded_packet(&mut tiler, false).is_none());
+
+        let packet = take_forwarded_packet(&mut tiler, true).expect("physical packet");
+        assert_eq!(
+            packet,
+            vec![
+                (EventType::RELATIVE.0, RelativeAxisType::REL_X.0, 4),
+                (EventType::RELATIVE.0, RelativeAxisType::REL_Y.0, -2),
+            ]
+        );
         assert!(tiler.forwarded.is_empty());
+    }
+
+    #[test]
+    fn transient_virtual_relay_is_not_watched_as_a_modifier_source() {
+        assert!(!should_watch_ctrl_device(None, true));
+        assert!(should_watch_ctrl_device(
+            Some("usb-0000:12:00.0-2/input1"),
+            true,
+        ));
     }
 }
