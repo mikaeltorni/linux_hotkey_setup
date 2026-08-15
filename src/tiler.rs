@@ -36,7 +36,7 @@ const VIRTUAL_DEVICE_NAME: &str = "ctrl-back-window-tiler";
 const DBUS_BUS_NAME: &str = "org.gnome.shell.extensions.MonitorWindowHotkeys";
 const DBUS_OBJECT_PATH: &str = "/org/gnome/shell/extensions/monitor_window_hotkeys";
 const DBUS_INTERFACE: &str = "org.gnome.shell.extensions.MonitorWindowHotkeys";
-const RESCAN_INTERVAL: Duration = Duration::from_secs(2);
+const TOPOLOGY_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_FORWARD_PACKET_EVENTS: usize = 256;
 
 /// Sort event device paths by their numeric `eventN` suffix when available.
@@ -280,6 +280,35 @@ struct Watched {
     grab_failed: bool,
 }
 
+/// Return a stable signature for physical evdev nodes without opening them.
+///
+/// uinput devices are deliberately excluded: Phrase Automation creates and
+/// removes virtual relays during normal operation, and that churn must not
+/// trigger expensive capability probes against every physical input device.
+fn physical_input_topology_entry(name: &str, target: &Path) -> Option<String> {
+    (name.starts_with("event") && !is_virtual_input_sysfs_path(target))
+        .then(|| format!("{name}:{}", target.display()))
+}
+
+fn physical_input_topology() -> Vec<String> {
+    let Ok(entries) = fs::read_dir("/sys/class/input") else {
+        return Vec::new();
+    };
+    let mut topology = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("event") {
+                return None;
+            }
+            let target = fs::canonicalize(entry.path()).ok()?;
+            physical_input_topology_entry(&name, &target)
+        })
+        .collect::<Vec<_>>();
+    topology.sort();
+    topology
+}
+
 /// Run the tiler service until the process is stopped.
 pub fn run() -> ! {
     logging::service("INFO", "running in direct D-Bus mode");
@@ -291,12 +320,22 @@ pub fn run() -> ! {
     };
     let mut watched: Vec<Watched> = Vec::new();
     let mut virtual_dev = None;
-    let mut last_scan = Instant::now() - RESCAN_INTERVAL;
+    let mut topology = Vec::new();
+    let mut last_topology_check = Instant::now() - TOPOLOGY_CHECK_INTERVAL;
+    let mut rescan_requested = true;
     let mut reported_missing = false;
     let mut pointer_path = target.clone();
 
     loop {
-        if last_scan.elapsed() >= RESCAN_INTERVAL || watched.is_empty() {
+        if last_topology_check.elapsed() >= TOPOLOGY_CHECK_INTERVAL {
+            let current_topology = physical_input_topology();
+            if current_topology != topology {
+                topology = current_topology;
+                rescan_requested = true;
+            }
+            last_topology_check = Instant::now();
+        }
+        if rescan_requested {
             rescan(
                 &target,
                 &mut pointer_path,
@@ -305,10 +344,10 @@ pub fn run() -> ! {
                 &mut logic,
                 &mut virtual_dev,
             );
-            last_scan = Instant::now();
+            rescan_requested = false;
         }
         if watched.is_empty() {
-            std::thread::sleep(RESCAN_INTERVAL);
+            std::thread::sleep(TOPOLOGY_CHECK_INTERVAL);
             continue;
         }
         let mut fds = FdSet::new();
@@ -352,6 +391,7 @@ pub fn run() -> ! {
         }
         if disconnected {
             watched.clear();
+            rescan_requested = true;
             if target.is_empty() {
                 pointer_path.clear();
             }
@@ -806,5 +846,26 @@ mod tests {
         assert!(!is_virtual_input_sysfs_path(Path::new(
             "/sys/devices/pci0000:00/usb1/1-2/input/input7"
         )));
+        assert_eq!(
+            physical_input_topology_entry(
+                "event6",
+                Path::new("/sys/devices/pci0000:00/usb1/1-2/input/input7/event6")
+            ),
+            Some("event6:/sys/devices/pci0000:00/usb1/1-2/input/input7/event6".to_string())
+        );
+        assert_eq!(
+            physical_input_topology_entry(
+                "event28",
+                Path::new("/sys/devices/virtual/input/input72/event28")
+            ),
+            None
+        );
+        assert_eq!(
+            physical_input_topology_entry(
+                "mouse0",
+                Path::new("/sys/devices/pci0000:00/usb1/1-2/input/input7/mouse0")
+            ),
+            None
+        );
     }
 }
