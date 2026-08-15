@@ -159,10 +159,8 @@ impl TilerLogic {
         }
         if self.back_codes.contains(&code) {
             let key = (path.to_string(), code);
-            if value == 1 && !self.ctrl_pressed.is_empty() {
-                if grabbed {
-                    self.suppressed.insert(key);
-                }
+            if value == 1 && grabbed && !self.ctrl_pressed.is_empty() {
+                self.suppressed.insert(key);
                 self.tile_calls += 1;
                 return;
             }
@@ -277,7 +275,9 @@ pub fn list_pointers() -> i32 {
 struct Watched {
     device: Device,
     path: String,
+    is_pointer: bool,
     grabbed: bool,
+    grab_failed: bool,
 }
 
 /// Run the tiler service until the process is stopped.
@@ -344,9 +344,10 @@ pub fn run() -> ! {
                 }
             };
             let path = watched[idx].path.clone();
-            let grabbed = watched[idx].grabbed;
             for event in events {
+                let grabbed = watched[idx].grabbed;
                 handle_live_event(&mut logic, &mut virtual_dev, &path, grabbed, event);
+                sync_pointer_grabs(&mut watched, &logic, virtual_dev.is_some() && logic.ui_ok);
             }
         }
         if disconnected {
@@ -414,6 +415,42 @@ fn take_forwarded_packet(
     Some(std::mem::take(&mut logic.forwarded))
 }
 
+/// Keep the physical pointer direct except while the configured chord is live.
+fn pointer_should_be_grabbed(logic: &TilerLogic) -> bool {
+    !logic.ctrl_pressed.is_empty() || !logic.suppressed.is_empty()
+}
+
+/// Enter or leave exclusive pointer capture as the modifier chord changes.
+fn sync_pointer_grabs(watched: &mut [Watched], logic: &TilerLogic, relay_available: bool) {
+    let should_grab = relay_available && pointer_should_be_grabbed(logic);
+    for entry in watched.iter_mut().filter(|entry| entry.is_pointer) {
+        if should_grab && !entry.grabbed && !entry.grab_failed {
+            match entry.device.grab() {
+                Ok(()) => entry.grabbed = true,
+                Err(err) => {
+                    entry.grab_failed = true;
+                    logging::service(
+                        "ERROR",
+                        format!("could not grab {} for tiling chord: {err}", entry.path),
+                    );
+                }
+            }
+        } else if !should_grab && entry.grabbed {
+            if let Err(err) = entry.device.ungrab() {
+                logging::service(
+                    "ERROR",
+                    format!("could not release {} after tiling chord: {err}", entry.path),
+                );
+            }
+            entry.grabbed = false;
+            entry.grab_failed = false;
+        } else if !should_grab {
+            // Permit one fresh grab attempt on the next modifier press.
+            entry.grab_failed = false;
+        }
+    }
+}
+
 /// Return whether a stable physical device should supply modifier state.
 fn should_watch_ctrl_device(name: &str, is_physical: bool, supports_modifier: bool) -> bool {
     supports_modifier && is_physical && !name.starts_with("section-")
@@ -470,7 +507,7 @@ fn rescan(
 
     let open: HashSet<String> = watched.iter().map(|w| w.path.clone()).collect();
     let mut forward: HashSet<(u16, u16)> = logic.forward_codes.clone();
-    for (path, mut device) in enumerated {
+    for (path, device) in enumerated {
         let path_s = path.to_string_lossy().into_owned();
         if open.contains(&path_s) {
             continue;
@@ -496,7 +533,6 @@ fn rescan(
         if !watches_ctrl && !is_pointer {
             continue;
         }
-        let mut grabbed = false;
         if is_pointer {
             if !is_back_pointer(&device) {
                 logging::service(
@@ -506,41 +542,38 @@ fn rescan(
                 pointer_path.clear();
                 continue;
             }
-            match device.grab() {
-                Ok(()) => {
-                    grabbed = true;
-                    if let Some(keys) = device.supported_keys() {
-                        for key in keys.iter() {
-                            forward.insert((EV_KEY, key.code()));
-                        }
-                    }
-                    if let Some(rels) = device.supported_relative_axes() {
-                        for axis in rels.iter() {
-                            forward.insert((EventType::RELATIVE.0, axis.0));
-                        }
-                    }
+            if let Some(keys) = device.supported_keys() {
+                for key in keys.iter() {
+                    forward.insert((EV_KEY, key.code()));
                 }
-                Err(err) => logging::service("ERROR", format!("could not grab {path_s}: {err}")),
+            }
+            if let Some(rels) = device.supported_relative_axes() {
+                for axis in rels.iter() {
+                    forward.insert((EventType::RELATIVE.0, axis.0));
+                }
             }
         }
-        let mode = if grabbed {
-            "grabbed pointer"
+        let mode = if is_pointer {
+            "direct pointer; chord-only grab"
         } else {
-            "Ctrl monitor"
+            "modifier monitor"
         };
         logging::service("INFO", format!("watching {path_s}: {name} [{mode}]"));
         watched.push(Watched {
             device,
             path: path_s,
-            grabbed,
+            is_pointer,
+            grabbed: false,
+            grab_failed: false,
         });
     }
     let caps_changed = logic.forward_codes != forward;
     logic.forward_codes = forward;
-    if watched.iter().any(|w| w.grabbed) && (virtual_dev.is_none() || caps_changed) {
+    if watched.iter().any(|w| w.is_pointer) && (virtual_dev.is_none() || caps_changed) {
         *virtual_dev = open_virtual(&logic.forward_codes);
         logic.ui_ok = virtual_dev.is_some();
     }
+    sync_pointer_grabs(watched, logic, virtual_dev.is_some() && logic.ui_ok);
 }
 
 /// Choose the first non-keyboard pointing node with a back button.
@@ -677,6 +710,30 @@ mod tests {
             tiler.forwarded,
             vec![(EV_KEY, BTN_SIDE, 1), (EV_KEY, BTN_SIDE, 0)]
         );
+    }
+
+    #[test]
+    fn ungrabbed_ctrl_back_is_not_tiled_or_relayed() {
+        let mut tiler = TilerLogic::default();
+        tiler.handle_key("/dev/input/keyboard", false, KEY_LEFTCTRL, 1);
+        tiler.handle_key("/dev/input/mouse", false, BTN_SIDE, 1);
+        tiler.handle_key("/dev/input/mouse", false, BTN_SIDE, 0);
+        assert_eq!(tiler.tile_calls, 0);
+        assert!(tiler.forwarded.is_empty());
+        assert!(tiler.suppressed.is_empty());
+    }
+
+    #[test]
+    fn pointer_grab_lasts_through_suppressed_button_release() {
+        let mut tiler = TilerLogic::default();
+        assert!(!pointer_should_be_grabbed(&tiler));
+        tiler.handle_key("/dev/input/keyboard", false, KEY_LEFTCTRL, 1);
+        assert!(pointer_should_be_grabbed(&tiler));
+        tiler.handle_key("/dev/input/mouse", true, BTN_SIDE, 1);
+        tiler.handle_key("/dev/input/keyboard", false, KEY_LEFTCTRL, 0);
+        assert!(pointer_should_be_grabbed(&tiler));
+        tiler.handle_key("/dev/input/mouse", true, BTN_SIDE, 0);
+        assert!(!pointer_should_be_grabbed(&tiler));
     }
 
     #[test]
