@@ -414,17 +414,17 @@ fn take_forwarded_packet(
     Some(std::mem::take(&mut logic.forwarded))
 }
 
-/// Return whether a device should supply modifier state to the tiler.
-fn should_watch_ctrl_device(is_virtual: bool, supports_modifier: bool) -> bool {
-    supports_modifier && !is_virtual
+/// Return whether a stable physical device should supply modifier state.
+fn should_watch_ctrl_device(name: &str, is_physical: bool, supports_modifier: bool) -> bool {
+    supports_modifier && is_physical && !name.starts_with("section-")
 }
 
 fn is_virtual_input_sysfs_path(path: &Path) -> bool {
     path.starts_with("/sys/devices/virtual/input")
 }
 
-/// Resolve an event node through sysfs and identify kernel/uinput virtual input.
-fn is_virtual_input_device(path: &Path) -> bool {
+/// Resolve an event node through sysfs and require a stable physical device.
+fn is_physical_input_device(path: &Path) -> bool {
     let Some(event_name) = path.file_name() else {
         return false;
     };
@@ -433,7 +433,7 @@ fn is_virtual_input_device(path: &Path) -> bool {
             .join(event_name)
             .join("device"),
     )
-    .is_ok_and(|resolved| is_virtual_input_sysfs_path(&resolved))
+    .is_ok_and(|resolved| !is_virtual_input_sysfs_path(&resolved))
 }
 
 fn rescan(
@@ -491,7 +491,7 @@ fn rescan(
         // sysfs because uinput can publish a non-empty "physical" label such
         // as py-evdev-uinput even though the kernel device is virtual.
         let watches_ctrl =
-            should_watch_ctrl_device(is_virtual_input_device(&path), supports_modifier);
+            should_watch_ctrl_device(&name, is_physical_input_device(&path), supports_modifier);
         let is_pointer = path_s == *pointer_path;
         if !watches_ctrl && !is_pointer {
             continue;
@@ -728,8 +728,21 @@ mod tests {
 
     #[test]
     fn transient_virtual_relay_is_not_watched_as_a_modifier_source() {
-        assert!(!should_watch_ctrl_device(true, true));
-        assert!(should_watch_ctrl_device(false, true));
+        assert!(!should_watch_ctrl_device(
+            "section-wheel-interceptor",
+            false,
+            true,
+        ));
+        assert!(!should_watch_ctrl_device(
+            "section-interceptor",
+            false,
+            true,
+        ));
+        assert!(should_watch_ctrl_device(
+            "Razer Razer Naga V2 HyperSpeed Keyboard",
+            true,
+            true,
+        ));
         assert!(is_virtual_input_sysfs_path(Path::new(
             "/sys/devices/virtual/input/input72"
         )));
