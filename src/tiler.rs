@@ -414,9 +414,26 @@ fn take_forwarded_packet(
     Some(std::mem::take(&mut logic.forwarded))
 }
 
-/// Return whether a physical device should supply modifier state to the tiler.
-fn should_watch_ctrl_device(physical_path: Option<&str>, supports_modifier: bool) -> bool {
-    supports_modifier && physical_path.is_some_and(|path| !path.is_empty())
+/// Return whether a device should supply modifier state to the tiler.
+fn should_watch_ctrl_device(is_virtual: bool, supports_modifier: bool) -> bool {
+    supports_modifier && !is_virtual
+}
+
+fn is_virtual_input_sysfs_path(path: &Path) -> bool {
+    path.starts_with("/sys/devices/virtual/input")
+}
+
+/// Resolve an event node through sysfs and identify kernel/uinput virtual input.
+fn is_virtual_input_device(path: &Path) -> bool {
+    let Some(event_name) = path.file_name() else {
+        return false;
+    };
+    fs::canonicalize(
+        Path::new("/sys/class/input")
+            .join(event_name)
+            .join("device"),
+    )
+    .is_ok_and(|resolved| is_virtual_input_sysfs_path(&resolved))
 }
 
 fn rescan(
@@ -469,11 +486,12 @@ fn rescan(
                 .iter()
                 .any(|code| k.iter().any(|key| key.code() == *code))
         });
-        // Uinput relays (including Phrase Automation's short-lived section
-        // devices) have no physical path. Watching them duplicates physical
-        // modifier input and makes their normal teardown churn the grabbed
-        // pointer, so modifier monitoring is restricted to physical devices.
-        let watches_ctrl = should_watch_ctrl_device(device.physical_path(), supports_modifier);
+        // Watching uinput relays duplicates physical modifier input and makes
+        // their normal teardown churn the grabbed pointer. Resolve through
+        // sysfs because uinput can publish a non-empty "physical" label such
+        // as py-evdev-uinput even though the kernel device is virtual.
+        let watches_ctrl =
+            should_watch_ctrl_device(is_virtual_input_device(&path), supports_modifier);
         let is_pointer = path_s == *pointer_path;
         if !watches_ctrl && !is_pointer {
             continue;
@@ -710,10 +728,13 @@ mod tests {
 
     #[test]
     fn transient_virtual_relay_is_not_watched_as_a_modifier_source() {
-        assert!(!should_watch_ctrl_device(None, true));
-        assert!(should_watch_ctrl_device(
-            Some("usb-0000:12:00.0-2/input1"),
-            true,
-        ));
+        assert!(!should_watch_ctrl_device(true, true));
+        assert!(should_watch_ctrl_device(false, true));
+        assert!(is_virtual_input_sysfs_path(Path::new(
+            "/sys/devices/virtual/input/input72"
+        )));
+        assert!(!is_virtual_input_sysfs_path(Path::new(
+            "/sys/devices/pci0000:00/usb1/1-2/input/input7"
+        )));
     }
 }
