@@ -147,6 +147,58 @@ def test_workspace_and_screenshot_bindings_are_applied():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_workspace_behavior_keeps_eight_static_workspaces_and_unbinds_add_keys():
+    """The real workspace-behavior helper must pin 8 workspaces and unbind add keys.
+
+    WORKSPACE_COUNT is left unset so the library default is the value under
+    test. user_gsettings is stubbed; the real set_gsettings_strv writes empty
+    arrays through that stub so the log is the actual apply path.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td) / "home"
+        home.mkdir()
+        proc = run_bash(
+            "\n".join(
+                [
+                    "set -euo pipefail",
+                    f"SCRIPT_DIR={str(ROOT_DIR)!r}",
+                    f"CONFIG_DIR={str(ROOT_DIR / 'configs')!r}",
+                    f"TARGET_HOME={str(home)!r}",
+                    "TARGET_USER=$(id -un)",
+                    "unset WORKSPACE_COUNT WORKSPACE_UI_COUNT",
+                    "source lib/hotkeys_setup.sh",
+                    "calls=$TARGET_HOME/gsettings.log",
+                    "run_as_target() { \"$@\"; }",
+                    "user_gsettings() { printf '%s\\n' \"$*\" >> \"$calls\"; }",
+                    "configure_workspace_behavior",
+                    "cat \"$calls\"",
+                ]
+            )
+        )
+
+    assert proc.returncode == 0, proc.stderr
+    log = proc.stdout
+    assert "set org.gnome.mutter dynamic-workspaces false" in log
+    assert "set org.gnome.desktop.wm.preferences num-workspaces 8" in log
+    assert "num-workspaces 9" not in log
+    assert "num-workspaces 10" not in log
+    for key in (
+        "switch-to-workspace-last",
+        "move-to-workspace-last",
+        "switch-to-workspace-left",
+        "switch-to-workspace-right",
+        "switch-to-workspace-up",
+        "switch-to-workspace-down",
+    ):
+        assert f"set org.gnome.desktop.wm.keybindings {key} []" in log
+    for index in range(9, 13):
+        assert f"set org.gnome.desktop.wm.keybindings switch-to-workspace-{index} []" in log
+        assert f"set org.gnome.desktop.wm.keybindings move-to-workspace-{index} []" in log
+    # Super+Shift+Arrow window-move bindings stay assigned, not cleared.
+    assert "set org.gnome.desktop.wm.keybindings move-to-workspace-left []" not in log
+    assert "set org.gnome.desktop.wm.keybindings move-to-workspace-right []" not in log
+
+
 def test_workspace_hotkeys_expose_typed_fields_and_one_move_modifier():
     """Switch fields are individually editable while move uses one modifier."""
     configurable = subprocess.run(
@@ -159,15 +211,16 @@ def test_workspace_hotkeys_expose_typed_fields_and_one_move_modifier():
     )
     assert configurable.returncode == values.returncode == 0
     assert configurable.stdout.splitlines() == [
-        *(f"workspace_switch_{index}" for index in range(1, 10)),
+        *(f"workspace_switch_{index}" for index in range(1, 9)),
         "workspace_move_modifier",
     ]
     assert "workspace_switch_6\tSuper+W" in values.stdout
+    assert "workspace_switch_9" not in configurable.stdout
     assert "workspace_move_modifier\tShift" in values.stdout
 
 
 def test_numbered_workspace_hotkeys_use_switch_rows_and_one_move_modifier():
-    """Discovery exposes nine switch fields without nine duplicated move rows."""
+    """Discovery exposes eight switch fields without duplicated move rows."""
     proc = subprocess.run(
         ["bash", "install.sh", "--list-components"],
         cwd=ROOT_DIR,
@@ -182,8 +235,9 @@ def test_numbered_workspace_hotkeys_use_switch_rows_and_one_move_modifier():
     assert "workspace_keys" not in ids
     assert "workspace_behavior" in ids
     assert [item for item in ids if item.startswith("workspace_switch_")] == [
-        f"workspace_switch_{index}" for index in range(1, 10)
+        f"workspace_switch_{index}" for index in range(1, 9)
     ]
+    assert "workspace_switch_9" not in ids
     assert [item for item in ids if item.startswith("workspace_move_")] == [
         "workspace_move_modifier"
     ]
@@ -256,13 +310,13 @@ def test_selected_workspace_component_installs_with_detached_stdin(tmp_path):
         "['<Alt><Super>2']" in line
         for line in mutations
     )
-    assert not any("switch-to-workspace-1" in line for line in mutations)
+    assert not any("switch-to-workspace-1 " in line for line in mutations)
     assert any(
         "set org.gnome.desktop.wm.keybindings move-to-workspace-2 "
         "['<Alt><Super><Shift>2']" in line
         for line in mutations
     )
-    assert not any("move-to-workspace-1" in line for line in mutations)
+    assert not any("move-to-workspace-1 " in line for line in mutations)
     assert (state_dir / "isc/receipts/linux_hotkey_setup/workspace_switch_2").is_file()
 
 

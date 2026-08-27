@@ -33,11 +33,10 @@ HOTKEYS_SETUP_CONFIG_DIR="$HOTKEYS_SETUP_DIR/configs"
 : "${USER_BUS:=unix:path=${RUNTIME_DIR}/bus}"
 : "${SESSION_TYPE:=${XDG_SESSION_TYPE:-unknown}}"
 : "${APT_UPDATED:=0}"
-# Nine numbered workspaces are offered in the capture UI (the 9th ships blank so
-# the user can assign it). WORKSPACE_COUNT is the number of static workspaces
-# created; WORKSPACE_UI_COUNT is how many rows the hotkey capture walks.
-: "${WORKSPACE_COUNT:=9}"
-: "${WORKSPACE_UI_COUNT:=9}"
+# Eight static numbered workspaces. WORKSPACE_COUNT is the GNOME workspace
+# count; WORKSPACE_UI_COUNT is how many switch rows the installer offers.
+: "${WORKSPACE_COUNT:=8}"
+: "${WORKSPACE_UI_COUNT:=8}"
 
 SCREENSHOT_UI_BINDINGS=("${SCREENSHOT_UI_BINDINGS[@]:-<Shift><Super>s}")
 SCREENSHOT_QUICK_BINDINGS=("${SCREENSHOT_QUICK_BINDINGS[@]:-Print}")
@@ -225,8 +224,8 @@ configure_screenshot_binding() {
 }
 
 # hotkey_default_for_index — look up the "index:binding" default for a workspace
-# index in a bindings array, printing the binding (empty when none is defined,
-# e.g. the intentionally-blank 9th workspace). Args: $1 index; $2.. entries.
+# index in a bindings array, printing the binding (empty when none is defined).
+# Args: $1 index; $2.. entries.
 hotkey_default_for_index() {
   local want="$1"; shift
   local entry
@@ -234,6 +233,25 @@ hotkey_default_for_index() {
     [[ "${entry%%:*}" == "$want" ]] && { printf '%s' "${entry#*:}"; return 0; }
   done
   printf ''
+}
+
+# unbind_workspace_add_keybindings — Clear GNOME keys that create or target a
+# workspace beyond the static set of 8. Relative switch-to-workspace chords
+# append a workspace when dynamic workspaces are on; last/9–12 target slots
+# that no longer exist. Super+Shift+Arrow move-to-workspace-{left,right,up,down}
+# window-move bindings are left alone (applied separately).
+unbind_workspace_add_keybindings() {
+  local key index
+  msg "Clearing workspace-add and beyond-8 switch/move keybindings"
+  for key in switch-to-workspace-last move-to-workspace-last \
+             switch-to-workspace-left switch-to-workspace-right \
+             switch-to-workspace-up switch-to-workspace-down; do
+    set_gsettings_strv org.gnome.desktop.wm.keybindings "$key"
+  done
+  for index in 9 10 11 12; do
+    set_gsettings_strv org.gnome.desktop.wm.keybindings "switch-to-workspace-${index}"
+    set_gsettings_strv org.gnome.desktop.wm.keybindings "move-to-workspace-${index}"
+  done
 }
 
 # configure_workspace_behavior — Apply settings shared by all numbered
@@ -252,6 +270,7 @@ configure_workspace_behavior() {
   fi
   user_gsettings set org.gnome.mutter dynamic-workspaces false
   user_gsettings set org.gnome.desktop.wm.preferences num-workspaces "$WORKSPACE_COUNT"
+  unbind_workspace_add_keybindings
 
   local entry key binding
   for entry in "${SUPER_ARROW_MOVE_BINDINGS[@]}"; do

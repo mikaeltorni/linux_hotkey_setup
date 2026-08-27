@@ -26,7 +26,7 @@ Every hotkey also has an environment override for fully scripted runs
 `MONITOR_MOVE_<n>`, `WINDOW_PLACEMENT_TILING_TRIGGER`).
 
 Every numbered switch appears as its own editable component row
-(`workspace_switch_1` … `workspace_switch_9`) in both the master and standalone
+(`workspace_switch_1` … `workspace_switch_8`) in both the master and standalone
 menus. RIGHT opens the framework-owned typed field; the current `Super+W` style
 value appears in the row with an explicit rebind action. Window movement uses
 one `workspace_move_modifier` field (Shift by default), which is added to each
