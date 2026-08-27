@@ -3,7 +3,7 @@
 #
 # Each workspace switch action owns one typed hotkey field. Move bindings are
 # derived by adding one shared modifier (Shift by default), which prevents the
-# installer menu from duplicating nine nearly identical move-hotkey fields.
+# installer menu from duplicating eight nearly identical move-hotkey fields.
 
 : "${WORKSPACE_HOTKEY_CONFIG:=$TARGET_HOME/.config/linux-hotkey-setup/workspace-hotkeys.conf}"
 : "${WORKSPACE_MOVE_MODIFIER:=Shift}"

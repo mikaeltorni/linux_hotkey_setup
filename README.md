@@ -71,7 +71,7 @@ Important defaults:
 Interactive capture is used on a terminal; these are the shown defaults and the
 environment overrides for automated runs:
 
-- `WORKSPACE_COUNT=9` (numbered workspaces created; capture walks up to 9)
+- `WORKSPACE_COUNT=8` (numbered workspaces created; capture walks up to 8)
 - `SCREENSHOT_HOTKEY` overrides the screenshot default `<Shift><Super>s`
 - `WORKSPACE_SWITCH_<n>` overrides one switch field; `WORKSPACE_MOVE_MODIFIER`
   controls every derived move binding (default `Shift`)
@@ -166,7 +166,6 @@ master installations.
 | `screenshot` | Screenshot shortcut (default `<Shift><Super>s`) | on |
 | `workspace_behavior` | Static workspace count and shared navigation behavior | on |
 | `workspace_switch_1` … `workspace_switch_8` | Editable switch field per workspace | on |
-| `workspace_switch_9` | Optional switch-to-workspace-9 action (unassigned by default) | off |
 | `workspace_move_modifier` | One modifier added to every switch chord for moving windows | on |
 | `monitor_window_hotkeys` | Monitor/window movement hotkeys extension (4 monitors) | on |
 | `window_placement_tiling` | Window placement tiling service (Ctrl + mouse Back) | on |
