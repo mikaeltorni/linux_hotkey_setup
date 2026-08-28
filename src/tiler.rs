@@ -38,6 +38,13 @@ const DBUS_OBJECT_PATH: &str = "/org/gnome/shell/extensions/monitor_window_hotke
 const DBUS_INTERFACE: &str = "org.gnome.shell.extensions.MonitorWindowHotkeys";
 const TOPOLOGY_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 const MAX_FORWARD_PACKET_EVENTS: usize = 256;
+/// How often the tiler re-reads modifier key state from watched keyboards.
+///
+/// Event streaming alone is not enough: another daemon (Phrase Automation's
+/// section interceptor) holds an exclusive `EVIOCGRAB` on the keyboards, so
+/// no modifier events ever reach this service. `EVIOCGKEY` state reads keep
+/// working through a foreign grab, so the chord is detected from state.
+const MODIFIER_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 /// Sort event device paths by their numeric `eventN` suffix when available.
 pub fn input_device_sort_key(path: &str) -> (u8, String) {
@@ -143,6 +150,37 @@ impl Default for TilerLogic {
 }
 
 impl TilerLogic {
+    /// Replace the modifier state tracked for `path` with a polled snapshot.
+    ///
+    /// Arguments:
+    ///     path: Event node the state was read from, used to namespace keys.
+    ///     active: Modifier codes currently held down on that device.
+    ///
+    /// Keeping poll and event updates in the same `(path, code)` namespace
+    /// makes the two sources idempotent for devices that deliver both.
+    pub fn apply_modifier_state(&mut self, path: &str, active: &HashSet<u16>) {
+        for code in self.ctrl_codes.clone() {
+            let key = (path.to_string(), code);
+            if active.contains(&code) {
+                self.ctrl_pressed.insert(key);
+            } else {
+                self.ctrl_pressed.remove(&key);
+            }
+        }
+    }
+
+    /// Drop modifier and suppression state for devices that went away.
+    ///
+    /// Arguments:
+    ///     live_paths: Event nodes still watched after a rescan.
+    ///
+    /// Without this, a removed keyboard could leave a modifier stuck down and
+    /// hold the pointer in an exclusive grab forever.
+    pub fn forget_missing_devices(&mut self, live_paths: &HashSet<String>) {
+        self.ctrl_pressed.retain(|(path, _)| live_paths.contains(path));
+        self.suppressed.retain(|(path, _)| live_paths.contains(path));
+    }
+
     /// Handle one EV_KEY event from `path`.
     pub fn handle_key(&mut self, path: &str, grabbed: bool, code: u16, value: i32) {
         if self.ctrl_codes.contains(&code) {
@@ -276,6 +314,7 @@ struct Watched {
     device: Device,
     path: String,
     is_pointer: bool,
+    watches_ctrl: bool,
     grabbed: bool,
     grab_failed: bool,
 }
@@ -322,6 +361,7 @@ pub fn run() -> ! {
     let mut virtual_dev = None;
     let mut topology = Vec::new();
     let mut last_topology_check = Instant::now() - TOPOLOGY_CHECK_INTERVAL;
+    let mut last_modifier_poll = Instant::now() - MODIFIER_POLL_INTERVAL;
     let mut rescan_requested = true;
     let mut reported_missing = false;
     let mut pointer_path = target.clone();
@@ -350,6 +390,11 @@ pub fn run() -> ! {
             std::thread::sleep(TOPOLOGY_CHECK_INTERVAL);
             continue;
         }
+        if last_modifier_poll.elapsed() >= MODIFIER_POLL_INTERVAL {
+            poll_modifier_state(&watched, &mut logic);
+            sync_pointer_grabs(&mut watched, &logic, virtual_dev.is_some() && logic.ui_ok);
+            last_modifier_poll = Instant::now();
+        }
         let mut fds = FdSet::new();
         let mut max_fd = 0;
         for entry in &watched {
@@ -359,7 +404,7 @@ pub fn run() -> ! {
                 max_fd = fd;
             }
         }
-        let mut timeout = TimeVal::seconds(2);
+        let mut timeout = TimeVal::milliseconds(MODIFIER_POLL_INTERVAL.as_millis() as i64);
         match select(max_fd + 1, Some(&mut fds), None, None, Some(&mut timeout)) {
             Ok(0) | Err(_) => continue,
             Ok(_) => {}
@@ -391,11 +436,37 @@ pub fn run() -> ! {
         }
         if disconnected {
             watched.clear();
+            // Closed nodes can never report a modifier release, so drop their
+            // state instead of leaving the pointer grabbed on a phantom chord.
+            logic.forget_missing_devices(&HashSet::new());
             rescan_requested = true;
             if target.is_empty() {
                 pointer_path.clear();
             }
         }
+    }
+}
+
+/// Refresh modifier state from every watched keyboard via `EVIOCGKEY`.
+///
+/// Arguments:
+///     watched: Currently open input devices.
+///     logic: Tiler state whose `ctrl_pressed` set is updated in place.
+///
+/// State reads keep working while another process holds an exclusive grab on
+/// the keyboard, which event reads do not.
+fn poll_modifier_state(watched: &[Watched], logic: &mut TilerLogic) {
+    let codes = logic.ctrl_codes.clone();
+    for entry in watched.iter().filter(|entry| entry.watches_ctrl) {
+        let Ok(state) = entry.device.get_key_state() else {
+            continue;
+        };
+        let active: HashSet<u16> = state
+            .iter()
+            .map(|key| key.code())
+            .filter(|code| codes.contains(code))
+            .collect();
+        logic.apply_modifier_state(&entry.path, &active);
     }
 }
 
@@ -603,6 +674,7 @@ fn rescan(
             device,
             path: path_s,
             is_pointer,
+            watches_ctrl,
             grabbed: false,
             grab_failed: false,
         });
@@ -728,6 +800,40 @@ mod tests {
         );
         assert_eq!(selected, "");
         assert!(reported);
+    }
+
+    #[test]
+    fn polled_modifier_state_arms_and_disarms_the_chord() {
+        let mut tiler = TilerLogic::default();
+        tiler.apply_modifier_state("/dev/input/event30", &HashSet::from([KEY_LEFTCTRL]));
+        assert!(pointer_should_be_grabbed(&tiler));
+        tiler.handle_key("/dev/input/mouse", true, BTN_SIDE, 1);
+        tiler.handle_key("/dev/input/mouse", true, BTN_SIDE, 0);
+        assert_eq!(tiler.tile_calls, 1);
+        assert!(tiler.forwarded.is_empty());
+
+        tiler.apply_modifier_state("/dev/input/event30", &HashSet::new());
+        assert!(!pointer_should_be_grabbed(&tiler));
+    }
+
+    #[test]
+    fn polled_state_does_not_duplicate_event_driven_modifier_tracking() {
+        let mut tiler = TilerLogic::default();
+        tiler.handle_key("/dev/input/event30", false, KEY_LEFTCTRL, 1);
+        tiler.apply_modifier_state("/dev/input/event30", &HashSet::from([KEY_LEFTCTRL]));
+        assert_eq!(tiler.ctrl_pressed.len(), 1);
+        tiler.apply_modifier_state("/dev/input/event30", &HashSet::new());
+        assert!(tiler.ctrl_pressed.is_empty());
+    }
+
+    #[test]
+    fn vanished_devices_do_not_leave_the_pointer_grabbed() {
+        let mut tiler = TilerLogic::default();
+        tiler.apply_modifier_state("/dev/input/event30", &HashSet::from([KEY_LEFTCTRL]));
+        tiler.handle_key("/dev/input/mouse", true, BTN_SIDE, 1);
+        assert!(pointer_should_be_grabbed(&tiler));
+        tiler.forget_missing_devices(&HashSet::new());
+        assert!(!pointer_should_be_grabbed(&tiler));
     }
 
     #[test]
