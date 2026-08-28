@@ -802,6 +802,69 @@ mod tests {
         assert!(reported);
     }
 
+    /// End-to-end proof that modifier polling survives a foreign exclusive
+    /// grab: create a uinput keyboard, grab it from a second handle the way
+    /// Phrase Automation's interceptor does, and confirm the tiler still sees
+    /// the modifier go down and up. Requires write access to /dev/uinput.
+    #[test]
+    fn polled_state_survives_a_foreign_exclusive_grab() {
+        let mut keys = evdev::AttributeSet::<Key>::new();
+        keys.insert(Key::KEY_LEFTCTRL);
+        let Ok(builder) = VirtualDeviceBuilder::new() else {
+            eprintln!("skipping: /dev/uinput unavailable");
+            return;
+        };
+        let Ok(mut fake) = builder
+            .name("lhs-tools-grab-probe")
+            .with_keys(&keys)
+            .and_then(|b| b.build())
+        else {
+            eprintln!("skipping: could not build uinput device");
+            return;
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let Some(path) = evdev::enumerate().find_map(|(path, dev)| {
+            (dev.name() == Some("lhs-tools-grab-probe")).then_some(path)
+        }) else {
+            eprintln!("skipping: probe device did not appear");
+            return;
+        };
+        let (Ok(mut foreign), Ok(reader)) = (Device::open(&path), Device::open(&path)) else {
+            eprintln!("skipping: could not open probe device");
+            return;
+        };
+        if foreign.grab().is_err() {
+            eprintln!("skipping: could not take the foreign grab");
+            return;
+        }
+
+        let mut logic = TilerLogic::default();
+        let watched = vec![Watched {
+            device: reader,
+            path: path.to_string_lossy().into_owned(),
+            is_pointer: false,
+            watches_ctrl: true,
+            grabbed: false,
+            grab_failed: false,
+        }];
+
+        fake.emit(&[InputEvent::new(EventType::KEY, KEY_LEFTCTRL, 1)])
+            .expect("emit press");
+        std::thread::sleep(Duration::from_millis(150));
+        poll_modifier_state(&watched, &mut logic);
+        assert!(
+            pointer_should_be_grabbed(&logic),
+            "modifier state must be visible through a foreign exclusive grab"
+        );
+
+        fake.emit(&[InputEvent::new(EventType::KEY, KEY_LEFTCTRL, 0)])
+            .expect("emit release");
+        std::thread::sleep(Duration::from_millis(150));
+        poll_modifier_state(&watched, &mut logic);
+        assert!(!pointer_should_be_grabbed(&logic));
+        let _ = foreign.ungrab();
+    }
+
     #[test]
     fn polled_modifier_state_arms_and_disarms_the_chord() {
         let mut tiler = TilerLogic::default();
