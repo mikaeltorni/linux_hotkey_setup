@@ -474,6 +474,9 @@ def test_monitor_window_extension_no_longer_bundled_here():
     assert "apply-system-bindings.sh" not in agents
     assert "CONFIG_DIR=" not in (ROOT_DIR / "install.sh").read_text(encoding="utf-8")
     assert "HOTKEYS_SETUP_CONFIG_DIR=" not in setup
+    readme = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
+    assert "8-Repo Desktop Setup Chain" not in readme
+    assert "Phase 3" not in readme
 
 
 def test_gsettings_list_mutation_uses_extracted_helper():
