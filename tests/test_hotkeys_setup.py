@@ -463,6 +463,17 @@ def test_monitor_window_extension_no_longer_bundled_here():
     setup = (ROOT_DIR / "lib" / "hotkeys_setup.sh").read_text(encoding="utf-8")
     assert "monitor_window_hotkeys|" not in manifest
     assert "configure_monitor_window_hotkeys_extension" not in setup
+    readme = (ROOT_DIR / "README.md").read_text(encoding="utf-8")
+    agents = (ROOT_DIR / "AGENTS.md").read_text(encoding="utf-8")
+    assert "monitor-window-hotkeys@local" not in readme
+    assert "monitor-window-hotkeys@local" not in agents
+    assert "| `monitor_window_hotkeys`" not in readme
+    assert "MONITOR_MOVE_" not in readme
+    assert "MONITOR_MOVE_" not in agents
+    assert "apply-system-bindings.sh" not in readme
+    assert "apply-system-bindings.sh" not in agents
+    assert "CONFIG_DIR=" not in (ROOT_DIR / "install.sh").read_text(encoding="utf-8")
+    assert "HOTKEYS_SETUP_CONFIG_DIR=" not in setup
 
 
 def test_gsettings_list_mutation_uses_extracted_helper():

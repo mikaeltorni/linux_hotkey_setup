@@ -2,7 +2,7 @@
 # ctrl_back_tiler.sh - Window placement tiling: pointer device selection and
 # service installation (formerly the "Ctrl+Back window tiler").
 #
-# The caller must provide TARGET_HOME, TARGET_USER, HOTKEYS_SETUP_CONFIG_DIR,
+# The caller must provide TARGET_HOME, TARGET_USER,
 # the installer helpers msg(), run_as_target(), is_root(),
 # reload_systemd_daemon(), and enable_systemd_service(), and the shared
 # isc_capture_hotkey engine for the configurable trigger.

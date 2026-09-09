@@ -4,7 +4,7 @@
 
 Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
 
-It owns the configurable screenshot shortcut, numbered workspace switching and moving (up to 9 workspaces), the local monitor/window GNOME Shell hotkeys extension (4 monitors), and the window placement tiling user service (formerly the "Ctrl+Back window tiler"). Every hotkey can be chosen interactively through the shared press-to-capture engine. Automatic same-application tiling now installs from the sibling `linux_automatic_window_tiling` repository, pointer-driven window move/resize hotkeys from `linux_hotkey_window_tools`, and the numbered workspace popup extension from `linux_workspaces_setup` — each a standalone, directly-installed repository that configures its hotkeys the same interactive way. The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service also live in `linux_workspaces_setup`.
+It owns the configurable screenshot shortcut, numbered workspace switching and moving (up to 8 workspaces), and the window placement tiling user service (formerly the "Ctrl+Back window tiler"). Every hotkey can be chosen interactively through the shared press-to-capture engine. Automatic same-application tiling now installs from the sibling `linux_automatic_window_tiling` repository, pointer-driven window move/resize hotkeys from `linux_hotkey_window_tools`, monitor-move + half-tiling + Super+U send-mode from `linux_monitor_window_hotkeys`, and the numbered workspace popup extension from `linux_workspaces_setup` — each a standalone, directly-installed repository that configures its hotkeys the same interactive way. The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service also live in `linux_workspaces_setup`.
 
 ## Repository dependencies
 
@@ -22,9 +22,8 @@ See the full cross-repository map in
 
 ## Technology Stack
 
-- Bash installer for GNOME GSettings, GNOME Shell extension installation, and systemd user-service setup.
-- Python `evdev` helper logic inside the setup module for pointer-device detection.
-- A local GNOME Shell extension for monitor/window movement and tiling shortcuts.
+- Bash installer for GNOME GSettings and systemd user-service setup.
+- Rust `lhs-tools` binary for GSettings string-array edits and the window-placement tiler (`src/tiler.rs`).
 - Pytest-compatible Python tests that simulate shell behavior without modifying host settings.
 
 ## Installation
@@ -33,9 +32,13 @@ See the full cross-repository map in
 sudo bash install.sh
 ```
 
-The installer must run with `sudo` because it installs files into the target user's GNOME Shell extension directory, writes user systemd services, and fixes ownership. GSettings and user-service operations run as the target desktop user.
+Default invocation is `bash install.sh` (user mode). Root-only steps such as
+`apt` are skipped and reported; `sudo bash install.sh` applies those too.
+GSettings and user-service operations run as the target desktop user.
 
-After installation, log out and back in before testing GNOME Shell extension changes. Do not reload GNOME Shell extensions from an active Wayland session.
+This repository does not ship a GNOME Shell extension, so a Shell reload is
+not required after install. Restart `window-placement-tiling.service` after
+tiler code changes.
 
 ## Development Workflow
 
@@ -49,7 +52,7 @@ python3 -m pytest tests -q
 Run shell syntax validation:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh
 ```
 
 ## Project Structure
@@ -60,7 +63,6 @@ bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_hel
 - `lib/gsettings_helpers.sh` - reusable GSettings list and keybinding helpers sourced by the setup library.
 - `lhs-tools` (Rust, `src/`) - GSettings string-array helper (`append`/`remove`) and the window-placement tiler (`tiler` / `list-pointers`).
 - `lib/lifecycle.sh` - per-component detect/uninstall functions.
-- `configs/gnome-shell/extensions/monitor-window-hotkeys@local/` - local GNOME Shell extension and schema defaults.
 - `src/tiler.rs` - window-placement-tiling service (modifier + mouse-button half-tiler) and pointer listing.
 - `tests/` - simulation tests.
 
@@ -75,17 +77,14 @@ environment overrides for automated runs:
 - `SCREENSHOT_HOTKEY` overrides the screenshot default `<Shift><Super>s`
 - `WORKSPACE_SWITCH_<n>` overrides one switch field; `WORKSPACE_MOVE_MODIFIER`
   controls every derived move binding (default `Shift`)
-- `MONITOR_MOVE_<n>` overrides "move to monitor N" (defaults `<Alt><Super>x/z/c`, the 4th blank)
 - `WINDOW_PLACEMENT_TILING_TRIGGER` overrides the tiling trigger (default `Control|BTN_BACK`)
-- `MONITOR_WINDOW_HOTKEYS_EXTENSION_ID=monitor-window-hotkeys@local`
-
-Extension-owned monitor/window keybindings live in the extension schema defaults. System bindings that must be coordinated with those defaults live in `apply-system-bindings.sh`.
 
 Pointer-driven window move (`<Alt><Super>W` drag) and resize (`<Alt><Super>E`
 center scaling) now live in the standalone `linux_hotkey_window_tools`
-repository, installed directly by the master installer.
+repository, installed directly by the master installer. Monitor-move,
+half-tiling, and Super+U send-mode live in `linux_monitor_window_hotkeys`.
 
-Half-screen tiling aliases include `<Super>Up` for the top half, `<Super>Down` for the bottom half, `<Super>Left` for the left half, and `<Super>Right` for the right half. The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by `lhs-tools tiler`; its modifier and mouse button are configurable via the capture UI. Normal pointer movement stays on the physical device's direct Xorg/libinput path: the tiler grabs and relays the selected pointer only while the configured modifier is held (and through the matching button release), preserving each physical packet with one `SYN_REPORT`. A relay failure releases the physical pointer immediately. Modifier state is read only from physical input devices, so short-lived virtual relays from Phrase Automation or other tools cannot trigger a release/rescan/re-grab cycle for the selected mouse. That state is polled from each physical keyboard with `EVIOCGKEY` every 20 ms instead of being tracked from the event stream alone, because another daemon can hold an exclusive `EVIOCGRAB` on the keyboard (Phrase Automation's section interceptor does) — key *state* reads still succeed through a foreign grab while event reads deliver nothing, so the chord keeps working while those tools run. The service checks physical input topology through sysfs and performs full evdev capability probing only at startup or after an actual physical-device change; it does not reopen every mouse and keyboard on a timer. `apply-system-bindings.sh` removes GNOME's default Super+Up/Super+Down maximize and unmaximize/minimize bindings, and Tiling Assistant's `tile-maximize` Super+Up binding, so those vertical shortcuts reach the tiling actions.
+The window-placement-tiling trigger (default Ctrl + mouse Back) is handled by `lhs-tools tiler`; its modifier and mouse button are configurable via the capture UI. Normal pointer movement stays on the physical device's direct Xorg/libinput path: the tiler grabs and relays the selected pointer only while the configured modifier is held (and through the matching button release), preserving each physical packet with one `SYN_REPORT`. A relay failure releases the physical pointer immediately. Modifier state is read only from physical input devices, so short-lived virtual relays from Phrase Automation or other tools cannot trigger a release/rescan/re-grab cycle for the selected mouse. That state is polled from each physical keyboard with `EVIOCGKEY` every 20 ms instead of being tracked from the event stream alone, because another daemon can hold an exclusive `EVIOCGRAB` on the keyboard (Phrase Automation's section interceptor does) — key *state* reads still succeed through a foreign grab while event reads deliver nothing, so the chord keeps working while those tools run. The service checks physical input topology through sysfs and performs full evdev capability probing only at startup or after an actual physical-device change; it does not reopen every mouse and keyboard on a timer.
 
 Automatic same-application tiling (`linux_automatic_window_tiling`) and
 pointer-driven move/resize (`linux_hotkey_window_tools`) are standalone,
@@ -96,16 +95,14 @@ configurable hotkeys (chosen through the same shared capture engine).
 
 - If the window-placement-tiling service cannot find a pointing device with a browser-back button, it skips the service setup.
 - The window-placement-tiling service discards each forwarded event after emission and runs with a 64 MiB systemd memory ceiling, preventing a malformed or amplified input stream from exhausting system RAM.
-- If monitor/window hotkeys do not respond immediately, log out and back in so GNOME Shell loads the updated extension code.
 - If `Shift+Super+R` triggers GNOME's screen recording instead of move-to-workspace-8, the installer's unbinding of `org.gnome.shell.keybindings show-screen-recording-ui` has not taken effect yet. Re-run `bash install.sh`. This is a `gsettings` keybinding change, which GNOME Shell applies live, so no Shell reload is needed. Verify with `gsettings get org.gnome.shell.keybindings show-screen-recording-ui` returning `@as []`.
-- If GSettings schema writes fail for the local extension, run `glib-compile-schemas` on the extension `schemas/` directory and retry the installer.
 
 ## Deployment
 
 Before deploying:
 
 ```bash
-bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh configs/gnome-shell/extensions/monitor-window-hotkeys@local/apply-system-bindings.sh
+bash -n install.sh lib/hotkeys_setup.sh lib/ctrl_back_tiler.sh lib/gsettings_helpers.sh lib/lifecycle.sh
 cargo test
 python3 -m pytest tests -q
 ```
@@ -118,7 +115,7 @@ sudo bash install.sh
 
 ## Contributing
 
-Keep hotkey values single-sourced. Extension-owned monitor/window bindings belong in the extension schema defaults; installer-owned GNOME system bindings belong in named arrays or `apply-system-bindings.sh`. Avoid hard-coded checkout paths; resolve assets through `SCRIPT_DIR` or `CONFIG_DIR`.
+Keep hotkey values single-sourced. Installer-owned GNOME system bindings belong in named arrays in this repository. Monitor-move and half-tiling bindings belong in `linux_monitor_window_hotkeys`. Avoid hard-coded checkout paths; resolve assets through `SCRIPT_DIR`.
 
 ## Part of 8-Repo Desktop Setup Chain
 
@@ -167,7 +164,6 @@ master installations.
 | `workspace_behavior` | Static workspace count and shared navigation behavior | on |
 | `workspace_switch_1` … `workspace_switch_8` | Editable switch field per workspace | on |
 | `workspace_move_modifier` | One modifier added to every switch chord for moving windows | on |
-| `monitor_window_hotkeys` | Monitor/window movement hotkeys extension (4 monitors) | on |
 | `window_placement_tiling` | Window placement tiling service (Ctrl + mouse Back) | on |
 
 Automatic same-application window tiling, the pointer-driven window move/resize
