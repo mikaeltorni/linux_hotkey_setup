@@ -18,16 +18,14 @@
 #   configure_screenshot_binding
 #   configure_workspace_switch_1
 #
-# The caller must set TARGET_USER, TARGET_HOME, SCRIPT_DIR, CONFIG_DIR,
+# The caller must set TARGET_USER, TARGET_HOME, SCRIPT_DIR,
 # RUNTIME_DIR, DISPLAY_VAL, and USER_BUS before sourcing this file.
 
 : "${TARGET_USER:=${SUDO_USER:-$USER}}"
 : "${TARGET_HOME:=$(getent passwd "$TARGET_USER" | cut -d: -f6)}"
 HOTKEYS_SETUP_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOTKEYS_SETUP_DIR="$(cd "$HOTKEYS_SETUP_LIB_DIR/.." && pwd)"
-HOTKEYS_SETUP_CONFIG_DIR="$HOTKEYS_SETUP_DIR/configs"
 : "${SCRIPT_DIR:=$HOTKEYS_SETUP_DIR}"
-: "${CONFIG_DIR:=$HOTKEYS_SETUP_CONFIG_DIR}"
 : "${RUNTIME_DIR:=/run/user/$(id -u "$TARGET_USER")}"
 : "${DISPLAY_VAL:=${DISPLAY:-:0}}"
 : "${USER_BUS:=unix:path=${RUNTIME_DIR}/bus}"

@@ -23,7 +23,7 @@ read loop times out to the default after prolonged idle so it never blocks.
 
 Every hotkey also has an environment override for fully scripted runs
 (`SCREENSHOT_HOTKEY`, `WORKSPACE_SWITCH_<n>` / `WORKSPACE_MOVE_MODIFIER`,
-`MONITOR_MOVE_<n>`, `WINDOW_PLACEMENT_TILING_TRIGGER`).
+`WINDOW_PLACEMENT_TILING_TRIGGER`).
 
 Every numbered switch appears as its own editable component row
 (`workspace_switch_1` … `workspace_switch_8`) in both the master and standalone
@@ -53,18 +53,16 @@ mouse Back) to pick up your edits. The installer migrates the legacy
 
 ## GNOME Shell reload requirements
 
-A GNOME Shell reload (`Alt+F2 r` on X11, or logout/login) is **not** needed when:
-- Only `lhs-tools tiler` / `src/tiler.rs` changes — it runs as a systemd user service, independent of GNOME Shell.
-- Only `apply-system-bindings.sh` or other installer-side gsettings change — these apply immediately on the next install run.
+This repository no longer ships a GNOME Shell extension. A Shell reload is
+**not** needed for its changes:
 
-A reload **is** needed only if you modify the GNOME Shell extension itself:
-- `configs/gnome-shell/extensions/monitor-window-hotkeys@local/extension.js`
-- Any other file inside that extension directory (schemas, metadata, etc.)
+- `lhs-tools tiler` / `src/tiler.rs` runs as a systemd user service — restart
+  `window-placement-tiling.service` instead.
+- Installer-side `gsettings` keybinding changes apply live.
 
-When a reload is required, follow the `linux-configuration` skill — the single
-source of truth for GNOME reload safety: X11 in-place `Alt+F2 r`, or
-logout/login on Wayland. Never `gnome-shell --replace`, log the user out, or
-kill the Shell to force the change through.
+Monitor-move + half-tiling + Super+U send-mode extension code lives in
+`linux_monitor_window_hotkeys`. When that sibling's extension JS changes,
+follow the `linux-configuration` skill there.
 
 ## Shift+Super+R must stay free of screen recording
 
