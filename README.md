@@ -117,20 +117,12 @@ sudo bash install.sh
 
 Keep hotkey values single-sourced. Installer-owned GNOME system bindings belong in named arrays in this repository. Monitor-move and half-tiling bindings belong in `linux_monitor_window_hotkeys`. Avoid hard-coded checkout paths; resolve assets through `SCRIPT_DIR`.
 
-## Part of 8-Repo Desktop Setup Chain
+## Setup-chain membership
 
-This repository is **Phase 3** in the desktop setup chain:
-
-1. `linux_installations_setup` — Base packages, hardware, apps
-2. `linux_configuration_setup` — GNOME desktop, autostart, GSettings
-3. `linux_automatic_window_tiling` — Parameterized automatic window tiling
-4. **`linux_hotkey_setup` (this repo)** — GNOME hotkeys and workspace bindings
-5. `agent_command_center` — Agent command center components
-6. `linux_programming_setup` — Cursor IDE, VS Code extensions
-7. `ubuntu_2404_taskbar_system_status_monitor` — Taskbar system monitor extension
-8. `phrase_automation` — Phrase automation tmux service
-
-It is automatically cloned and run by the main installer (`installation_scripts/install.sh`).
+This repository is cloned and run by the master installer
+(`installation_scripts/install.sh`). Membership and order live in
+`installation_scripts/scripts/repository_manifest.sh`; the dependency map is
+[`installation_scripts/DEPENDENCIES.md`](https://github.com/mikaeltorni/installation_scripts/blob/master/DEPENDENCIES.md).
 
 ## Component selection
 
