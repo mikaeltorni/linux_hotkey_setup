@@ -13,7 +13,9 @@ enhance it and never block installation when absent.
 
 - **Build-time (soft):** the shared installer component framework
   [`linux_installation_scripts_functions`](https://github.com/mikaeltorni/linux_installation_scripts_functions) —
-  loaded from a sibling checkout when present, otherwise downloaded on demand.
+  loaded from a sibling checkout when present, otherwise cloned from the private
+  framework repository into the user's cache. Standalone first use needs Git
+  access to that repository.
   It also provides the shared interactive hotkey-capture engine every hotkey
   here is configured with.
 

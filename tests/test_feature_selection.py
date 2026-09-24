@@ -19,7 +19,18 @@ import subprocess
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-RUNTIME = ROOT_DIR.parent / "linux_installation_scripts_functions" / "component_runtime.sh"
+
+
+def _shared_runtime() -> Path:
+    """Locate the sibling framework from a live checkout or nested worktree."""
+    for parent in ROOT_DIR.parents:
+        runtime = parent / "linux_installation_scripts_functions" / "component_runtime.sh"
+        if runtime.is_file():
+            return runtime
+    return ROOT_DIR.parent / "linux_installation_scripts_functions" / "component_runtime.sh"
+
+
+RUNTIME = _shared_runtime()
 
 
 def test_install_forwards_every_requested_feature() -> None:
