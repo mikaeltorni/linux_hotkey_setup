@@ -177,8 +177,10 @@ impl TilerLogic {
     /// Without this, a removed keyboard could leave a modifier stuck down and
     /// hold the pointer in an exclusive grab forever.
     pub fn forget_missing_devices(&mut self, live_paths: &HashSet<String>) {
-        self.ctrl_pressed.retain(|(path, _)| live_paths.contains(path));
-        self.suppressed.retain(|(path, _)| live_paths.contains(path));
+        self.ctrl_pressed
+            .retain(|(path, _)| live_paths.contains(path));
+        self.suppressed
+            .retain(|(path, _)| live_paths.contains(path));
     }
 
     /// Handle one EV_KEY event from `path`.
@@ -823,9 +825,9 @@ mod tests {
             return;
         };
         std::thread::sleep(Duration::from_millis(300));
-        let Some(path) = evdev::enumerate().find_map(|(path, dev)| {
-            (dev.name() == Some("lhs-tools-grab-probe")).then_some(path)
-        }) else {
+        let Some(path) = evdev::enumerate()
+            .find_map(|(path, dev)| (dev.name() == Some("lhs-tools-grab-probe")).then_some(path))
+        else {
             eprintln!("skipping: probe device did not appear");
             return;
         };
