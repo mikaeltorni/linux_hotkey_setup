@@ -31,11 +31,11 @@ See the full cross-repository map in
 ## Installation
 
 ```bash
-sudo bash install.sh
+bash install.sh
 ```
 
-Default invocation is `bash install.sh` (user mode). Root-only steps such as
-`apt` are skipped and reported; `sudo bash install.sh` applies those too.
+This runs in user mode by default. Root-only steps such as `apt` are skipped
+and reported; run `sudo bash install.sh` only when you need to apply them.
 GSettings and user-service operations run as the target desktop user.
 
 This repository does not ship a GNOME Shell extension, so a Shell reload is
@@ -112,8 +112,11 @@ python3 -m pytest tests -q
 Then run:
 
 ```bash
-sudo bash install.sh
+bash install.sh
 ```
+
+Use `sudo bash install.sh` only when you also need the reported root-only
+package-management steps.
 
 ## Contributing
 
