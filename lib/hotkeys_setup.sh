@@ -103,6 +103,7 @@ fi
 # direct library users that did not enter through install.sh/isc_load_helpers.
 if ! declare -F isc_hotkey_field_value >/dev/null 2>&1; then
   for _hotkey_field_helper in \
+    "$HOTKEYS_SETUP_DIR/.installer-support/hotkey_capture.sh" \
     "$HOTKEYS_SETUP_DIR/../linux_installation_scripts_functions/hotkey_capture.sh" \
     "${ISC_COMPONENT_LIB_DIR:-}/hotkey_capture.sh"; do
     if [[ -f "$_hotkey_field_helper" ]]; then
