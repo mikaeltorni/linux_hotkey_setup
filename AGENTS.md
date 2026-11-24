@@ -1,12 +1,11 @@
-# Agent Command Center — AGENTS.md
+# Ubuntu Hotkeys Setup — AGENTS.md
 
 ## Configurable hotkeys (press-to-capture)
 
 Every hotkey this repo installs can be chosen through the shared interactive
 press-to-capture engine (`isc_capture_hotkey` from
 `linux_installation_scripts_functions/hotkey_capture.sh`, loaded via
-`isc_load_helpers`). The capture logic is **not** vendored here — do not fork it;
-extend the shared engine instead.
+`isc_load_helpers`). The licensed `.installer-support/` package provides the shared engine on standalone checkouts. Maintain its source in the framework repository.
 
 **Interactive capture is opt-in** via `ISC_HOTKEY_INTERACTIVE=1`. A plain install
 (`bash install.sh`, `sudo bash install.sh`, the master run, `--default`,
