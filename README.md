@@ -1,8 +1,27 @@
-# Ubuntu Hotkeys Setup
+# Ubuntu Hotkeys Setup — Configurable GNOME keyboard shortcuts
 
-> Part of [installation_scripts](https://github.com/mikaeltorni/installation_scripts) — the master installer that orchestrates a productivity-focused Ubuntu 24.04 desktop setup (workspaces, hotkeys, window tiling, programming tools, and more). Tested on Ubuntu 24.04.4 LTS.
+Ubuntu Hotkeys Setup is a configurable GNOME keyboard shortcuts installer for users who want
+custom screenshot, numbered workspace, and window placement bindings.
 
-Standalone installer for the Ubuntu GNOME hotkey setup used by the desktop installer.
+[![Last commit: 2026-11-24](docs/badges/last-commit.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/commits/master) [![Commits in 30 days: 2 as of 2026-11-25](docs/badges/commit-activity.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/graphs/commit-activity) [![Open issues: 0 as of 2026-11-25](docs/badges/issues.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/issues)
+
+Activity snapshot from GitHub’s default branch on 2026-11-25.
+
+[Installation](#installation) · [Configuration](#configuration) · [Component selection](#component-selection) · [Troubleshooting](#troubleshooting) · [MIT license](LICENSE.md)
+
+## Quick start
+
+Run inside the target user's GNOME desktop session. The screenshot component changes the current desktop binding.
+
+```bash
+bash install.sh --list-components
+bash install.sh --select screenshot
+bash install.sh --detect
+```
+
+The Ubuntu 24.04.5 GNOME 46 X11 workstation VM installed and detected the selected screenshot and workspace shortcut components. Its virtual mouse lacked the Back button needed by the pointer tiler.
+
+[Installation Scripts](https://github.com/mikaeltorni/installation_scripts) can also run this installer as part of the Ubuntu setup chain.
 
 It owns the configurable screenshot shortcut, numbered workspace switching and moving (up to 8 workspaces), and the window placement tiling user service (formerly the "Ctrl+Back window tiler"). Every hotkey can be chosen interactively through the shared press-to-capture engine. Automatic same-application tiling now installs from the sibling `linux_automatic_window_tiling` repository, pointer-driven window move/resize hotkeys from `linux_hotkey_window_tools`, monitor-move + half-tiling + Super+U send-mode from `linux_monitor_window_hotkeys`, and the numbered workspace popup extension from `linux_workspaces_setup` — each a standalone, directly-installed repository that configures its hotkeys the same interactive way. The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service also live in `linux_workspaces_setup`.
 
