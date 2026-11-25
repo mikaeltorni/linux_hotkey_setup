@@ -3,9 +3,9 @@
 Ubuntu Hotkeys Setup is a configurable GNOME keyboard shortcuts installer for users who want
 custom screenshot, numbered workspace, and window placement bindings.
 
-[![Last commit: 2026-11-24](docs/badges/last-commit.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/commits/master) [![Commits in 30 days: 2 as of 2026-11-25](docs/badges/commit-activity.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/graphs/commit-activity) [![Open issues: 0 as of 2026-11-25](docs/badges/issues.svg)](https://github.com/mikaeltorni/linux_hotkey_setup/issues)
-
-Activity snapshot from GitHub’s default branch on 2026-11-25.
+[![Last commit](https://img.shields.io/github/last-commit/mikaeltorni/linux_hotkey_setup)](https://github.com/mikaeltorni/linux_hotkey_setup/commits/master)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/mikaeltorni/linux_hotkey_setup)](https://github.com/mikaeltorni/linux_hotkey_setup/graphs/commit-activity)
+[![Issues](https://img.shields.io/github/issues/mikaeltorni/linux_hotkey_setup)](https://github.com/mikaeltorni/linux_hotkey_setup/issues)
 
 [Installation](#installation) · [Configuration](#configuration) · [Component selection](#component-selection) · [Troubleshooting](#troubleshooting) · [MIT license](LICENSE.md)
 
@@ -21,8 +21,6 @@ bash install.sh --detect
 
 The Ubuntu 24.04.5 GNOME 46 X11 workstation VM installed and detected the selected screenshot and workspace shortcut components. Its virtual mouse lacked the Back button needed by the pointer tiler.
 
-[Installation Scripts](https://github.com/mikaeltorni/installation_scripts) can also run this installer as part of the Ubuntu setup chain.
-
 It owns the configurable screenshot shortcut, numbered workspace switching and moving (up to 8 workspaces), and the window placement tiling user service (formerly the "Ctrl+Back window tiler"). Every hotkey can be chosen interactively through the shared press-to-capture engine. Automatic same-application tiling now installs from the sibling `linux_automatic_window_tiling` repository, pointer-driven window move/resize hotkeys from `linux_hotkey_window_tools`, monitor-move + half-tiling + Super+U send-mode from `linux_monitor_window_hotkeys`, and the numbered workspace popup extension from `linux_workspaces_setup` — each a standalone, directly-installed repository that configures its hotkeys the same interactive way. The Albert launcher toggle binding and the xmousepasteblock primary-paste blocker service also live in `linux_workspaces_setup`.
 
 ## Repository dependencies
@@ -34,8 +32,7 @@ enhance it and never block installation when absent.
   `.installer-support/`, with its license and verifiable source manifest.
   Framework discovery works offline without a private checkout or credentials.
 
-See the full cross-repository map in
-[installation_scripts/DEPENDENCIES.md](https://github.com/mikaeltorni/installation_scripts/blob/master/DEPENDENCIES.md).
+[Linux Monitor & Window Hotkeys](https://github.com/mikaeltorni/linux_monitor_window_hotkeys) provides the tiling interface. [Linux Hotkey Window Tools](https://github.com/mikaeltorni/linux_hotkey_window_tools) owns pointer-driven move and resize.
 
 ## Technology Stack
 
@@ -142,12 +139,12 @@ Keep hotkey values single-sourced. Installer-owned GNOME system bindings belong 
 This repository is cloned and run by the master installer
 (`installation_scripts/install.sh`). Membership and order live in
 `installation_scripts/scripts/repository_manifest.sh`; the dependency map is
-[`installation_scripts/DEPENDENCIES.md`](https://github.com/mikaeltorni/installation_scripts/blob/master/DEPENDENCIES.md).
+`installation_scripts/DEPENDENCIES.md`.
 
 ## Component selection
 
 This repository's `install.sh` participates in the shared installer
-component menu (see the [`installation_scripts`](https://github.com/mikaeltorni/installation_scripts)
+component menu (see the `installation_scripts`
 master installer). Run standalone, it offers an interactive submenu on a
 terminal; the master installer drives it non-interactively.
 
@@ -218,6 +215,28 @@ You are solely responsible for determining whether this software is suitable, sa
 The authors and copyright holders make no guarantees regarding security, reliability, availability, correctness, compliance, non-infringement, or fitness for any particular purpose.
 
 This notice is intended to clarify the nature of the project and does not impose additional restrictions beyond the MIT License.
+
+## Configurable GNOME keyboard shortcuts FAQ
+
+### How do I choose a new screenshot shortcut?
+
+Run `ISC_HOTKEY_INTERACTIVE=1 bash install.sh --reconfigure screenshot` from your GNOME desktop terminal. The capture screen shows the existing default before you press your chosen chord.
+
+### Can I rebind just one numbered workspace?
+
+Yes. Run `bash install.sh --list-components` to see `workspace_switch_1` through `workspace_switch_8`. Select or reconfigure only the component you want to change.
+
+### How do move-to-workspace shortcuts relate to switch shortcuts?
+
+The installer derives move shortcuts by adding the configured move modifier to the switch bindings. Shift is the default modifier.
+
+### Can I use a different pointer button for window tiling?
+
+Configure `WINDOW_PLACEMENT_TILING_TRIGGER` for the supported button combination. The desktop must expose a supported input device and button.
+
+### Where do the monitor and half-screen actions come from?
+
+Linux Monitor & Window Hotkeys provides the GNOME Shell actions and D-Bus interface. Ubuntu Hotkeys Setup supplies the configurable bindings and pointer tiler service.
 
 ## Installer lifecycle
 
